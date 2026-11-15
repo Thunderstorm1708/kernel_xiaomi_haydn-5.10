@@ -5,8 +5,8 @@
  */
 
 #define CONFIG_DRM_MSM 1
-#define CONFIG_DRM_MSM_DP 1
-#define CONFIG_DRM_MSM_DP_MST 1
+/* haydn: DP disabled in the DT (CONFIG_DRM_MSM_DP) */
+/* CONFIG_DRM_MSM_DP_MST */
 #define CONFIG_DRM_MSM_SDE 1
 #define CONFIG_SYNC_FILE 1
 #define CONFIG_DRM_MSM_DSI 1

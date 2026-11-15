@@ -95,7 +95,7 @@ static inline struct sde_kms *_sde_connector_get_kms(struct drm_connector *conn)
 static int sde_backlight_device_update_status(struct backlight_device *bd)
 {
 	int brightness;
-	struct dsi_display *dsi_display;
+	struct dsi_display *dsi_display = NULL;
 	struct dp_panel *dp_panel;
 	struct sde_connector *c_conn = bl_get_data(bd);
 	int bl_lvl;
@@ -219,7 +219,7 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 					struct drm_device *dev)
 {
 	struct backlight_properties props;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	struct dp_panel *dp_panel;
 	struct dsi_backlight_config *dsi_bl_config;
 	struct sde_kms *sde_kms;
@@ -685,7 +685,7 @@ static int _sde_connector_update_power_locked(struct sde_connector *c_conn)
 
 static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 {
-	struct dsi_display *dsi_display;
+	struct dsi_display *dsi_display = NULL;
 	struct dp_display *dp_display;
 	struct dsi_backlight_config *dsi_bl_config;
 	struct dp_backlight_config *dp_bl_config;
@@ -905,7 +905,7 @@ struct sde_connector_dyn_hdr_metadata *sde_connector_get_dyn_hdr_meta(
 void sde_connector_fod_pre_kickoff(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	struct dsi_panel *panel;
 	int rc;
 
@@ -942,7 +942,7 @@ void sde_connector_fod_post_kickoff(struct drm_connector *connector)
 {
 	static bool old_fod_hbm_enabled = false;
 	struct sde_connector *c_conn;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	struct dsi_panel *panel;
 	bool fod_hbm_enabled;
 
@@ -982,7 +982,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_kickoff_params params;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	int rc;
 
 	if (!connector) {
@@ -1113,7 +1113,7 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	struct sde_kms *sde_kms;
 
 	sde_kms = _sde_connector_get_kms(connector);
@@ -1153,7 +1153,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
 {
 	struct sde_connector *c_conn;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	u32 state = enable ? DSI_CLK_ON : DSI_CLK_OFF;
 	int rc = 0;
 
@@ -2600,7 +2600,7 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 int sde_connector_esd_status(struct drm_connector *conn)
 {
 	struct sde_connector *sde_conn = NULL;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	int ret = 0;
 
 	if (!conn)
@@ -2862,7 +2862,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	int connector_type, void *display,
 	struct msm_display_info *display_info)
 {
-	struct dsi_display *dsi_display;
+	struct dsi_display *dsi_display = NULL;
 	int rc;
 	struct drm_connector *connector;
 	u64 panel_id = ~0x0;
@@ -3022,7 +3022,7 @@ static ssize_t twm_enable_store(struct device *device,
 {
 	struct drm_connector *conn;
 	struct sde_connector *sde_conn;
-	struct dsi_display *dsi_display;
+	struct dsi_display *dsi_display = NULL;
 	int rc;
 	int data;
 
@@ -3146,7 +3146,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 
 	spin_lock_init(&c_conn->event_lock);
 
-	c_conn->base.panel = panel;
+	c_conn->panel = panel;
 	c_conn->connector_type = connector_type;
 	c_conn->encoder = encoder;
 	c_conn->display = display;

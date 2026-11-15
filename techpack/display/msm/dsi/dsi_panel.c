@@ -80,7 +80,7 @@ static int dsi_panel_vreg_get(struct dsi_panel *panel)
 	for (i = 0; i < panel->power_info.count; i++) {
 		vreg = devm_regulator_get(panel->parent,
 					  panel->power_info.vregs[i].vreg_name);
-		rc = PTR_RET(vreg);
+		rc = PTR_ERR_OR_ZERO(vreg);
 		if (rc) {
 			DSI_ERR("failed to get %s regulator\n",
 			       panel->power_info.vregs[i].vreg_name);
@@ -2462,7 +2462,7 @@ int dsi_panel_get_io_resources(struct dsi_panel *panel,
 parse_fail:
 	list_for_each_entry_safe(pos, tmp, &temp_head, list) {
 		list_del(&pos->list);
-		kzfree(pos);
+		kfree_sensitive(pos);
 	}
 end:
 	return rc;
@@ -3985,8 +3985,8 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
-	drm_panel_init(&panel->drm_panel);
-	panel->drm_panel.dev = &panel->mipi_device.dev;
+	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
+			NULL, DRM_MODE_CONNECTOR_DSI);
 	panel->mipi_device.dev.of_node = of_node;
 	panel->doze_mode_active = DSI_DOZE_MODE_NOLP;
 	panel->doze_mode_requested = DSI_DOZE_MODE_NOLP;
@@ -3994,9 +3994,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->fod_hbm_enabled = false;
 	panel->fod_hbm_requested = false;
 
-	rc = drm_panel_add(&panel->drm_panel);
-	if (rc)
-		goto error_vreg_put;
+	drm_panel_add(&panel->drm_panel);
 
 	rc = dsi_panel_sysfs_init(panel);
 	if (rc)
@@ -4005,7 +4003,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	mutex_init(&panel->panel_lock);
 
 	return panel;
-error_vreg_put:
 	(void)dsi_panel_vreg_put(panel);
 error:
 	kfree(panel);

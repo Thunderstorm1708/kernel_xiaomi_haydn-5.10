@@ -389,6 +389,15 @@ struct drm_display_mode {
 	 */
 	enum hdmi_picture_aspect picture_aspect_ratio;
 
+	/*
+	 * msm-5.4 compatibility (removed upstream in 5.9): the lahaina display
+	 * techpack keeps driver private mode data and the panel refresh rate
+	 * in the mode itself. drm_mode_copy() carries them along and
+	 * drm_mode_vrefresh() honours @vrefresh when a driver set it.
+	 */
+	int *private;
+	int private_flags;
+	int vrefresh;
 };
 
 /**

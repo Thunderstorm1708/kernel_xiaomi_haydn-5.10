@@ -19,6 +19,10 @@
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
+#ifndef HH_IRQ_LABEL_SDE
+#define HH_IRQ_LABEL_SDE 0 /* no Haven VM irq lending on haydn */
+#endif
+#include <drm/drm_panel_notifier_compat.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_fixed.h>
 #include <drm/drm_panel.h>
@@ -58,7 +62,6 @@
 #include <linux/qcom_scm.h>
 #include "soc/qcom/secure_buffer.h"
 #include <linux/qtee_shmbridge.h>
-#include <linux/haven/hh_irq_lend.h>
 
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
@@ -358,7 +361,7 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		SDE_DEBUG("sid_mask[%d]: %d\n", i, sec_sid[i]);
 	}
 
-	ret = dma_coerce_mask_and_coherent(&dummy, DMA_BIT_MASK(64));
+	ret = dma_coerce_mask_and_coherent(&dummy, ~0ULL);
 	if (ret) {
 		SDE_ERROR("Failed to set dma mask for dummy dev %d\n", ret);
 		goto map_error;
@@ -972,7 +975,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			struct drm_panel_notifier notifier_data;
 
 			SDE_EVT32(old_mode, new_mode, old_fps, new_fps,
-				connector->panel, crtc->state->active,
+				to_sde_connector(connector)->panel, crtc->state->active,
 				old_conn_state->crtc, event);
 			pr_debug("change detected (power mode %d->%d, fps %d->%d)\n",
 				old_mode, new_mode, old_fps, new_fps);
@@ -989,8 +992,8 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			notifier_data.refresh_rate = new_fps;
 			notifier_data.id = connector->base.id;
 
-			if (connector->panel)
-				drm_panel_notifier_call_chain(connector->panel,
+			if (to_sde_connector(connector)->panel)
+				drm_panel_notifier_call_chain(to_sde_connector(connector)->panel,
 							event, &notifier_data);
 		}
 	}
@@ -1475,7 +1478,7 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 		return;
 	priv = sde_kms->dev->dev_private;
 
-	if (sde_kms_power_resource_is_enabled(sde_kms->dev) < 0) {
+	if (!sde_kms_power_resource_is_enabled(sde_kms->dev)) {
 		SDE_ERROR("power resource is not enabled\n");
 		return;
 	}
@@ -3286,8 +3289,7 @@ static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
 			if (!dsi_display || !encoder) {
 				sde_conn->ops.cont_splash_res_disable
 						(sde_conn->display);
-			} else if (connector->encoder_ids[0]
-					== encoder->base.id) {
+			} else if (drm_connector_has_possible_encoder(connector, encoder)) {
 				/**
 				 * This handles dual DSI
 				 * configuration where one DSI
@@ -3478,7 +3480,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			 * ever have to support continuous splash for
 			 * external displays in MST configuration.
 			 */
-			if (connector->encoder_ids[0] == encoder->base.id)
+			if (drm_connector_has_possible_encoder(connector, encoder))
 				break;
 		}
 		drm_connector_list_iter_end(&conn_iter);
@@ -3581,7 +3583,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			 * ever have to support continuous splash for
 			 * external displays in MST configuration.
 			 */
-			if (connector->encoder_ids[0] == encoder->base.id)
+			if (drm_connector_has_possible_encoder(connector, encoder))
 				break;
 		}
 

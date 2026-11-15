@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 ccflags-y := -I$(srctree)/include/drm -I$(srctree)/techpack/display/msm -I$(srctree)/techpack/display/msm/dsi -I$(srctree)/techpack/display/msm/dp
+# clang 18: keep the msm-5.4 code building as it did on clang 12
+ccflags-y += -Wno-tautological-overlap-compare -Wno-tautological-pointer-compare
 ccflags-y += -I$(srctree)/techpack/display/msm/sde
 ccflags-y += -I$(srctree)/techpack/display/rotator
 ccflags-y += -I$(srctree)/techpack/display/hdcp

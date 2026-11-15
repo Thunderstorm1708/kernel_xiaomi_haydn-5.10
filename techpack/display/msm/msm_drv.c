@@ -1101,7 +1101,7 @@ static void msm_lastclose(struct drm_device *dev)
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
 	} else if (kms && kms->client.dev) {
-		rc = drm_client_modeset_commit_force(&kms->client);
+		rc = drm_client_modeset_commit_locked(&kms->client);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 	}
@@ -1799,7 +1799,7 @@ static struct drm_driver msm_driver = {
 	.irq_uninstall      = msm_irq_uninstall,
 	.enable_vblank      = msm_enable_vblank,
 	.disable_vblank     = msm_disable_vblank,
-	.gem_free_object    = msm_gem_free_object,
+	.gem_free_object_unlocked = msm_gem_free_object,
 	.gem_vm_ops         = &vm_ops,
 	.dumb_create        = msm_gem_dumb_create,
 	.dumb_map_offset    = msm_gem_dumb_map_offset,

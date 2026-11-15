@@ -1,6 +1,5 @@
 /*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -20,8 +19,10 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
+#include <linux/qcom-dma-mapping.h>
 #include <linux/msm_dma_iommu_mapping.h>
 #include <linux/dma-mapping.h>
+#include <linux/qcom-iommu-util.h>
 
 #include <soc/qcom/secure_buffer.h>
 
@@ -82,9 +83,9 @@ static int msm_smmu_attach(struct msm_mmu *mmu, const char * const *names,
 		dev_dbg(client->dev, "iommu domain ops restored\n");
 	}
 
-	rc = iommu_attach_device(client->domain, client->dev);
+	rc = qcom_iommu_sid_switch(client->dev, SID_ACQUIRE);
 	if (rc) {
-		dev_err(client->dev, "iommu attach dev failed (%d)\n", rc);
+		dev_err(client->dev, "iommu sid switch failed (%d)\n", rc);
 		return rc;
 	}
 
@@ -100,6 +101,7 @@ static void msm_smmu_detach(struct msm_mmu *mmu, const char * const *names,
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
+	int rc;
 
 	if (!client) {
 		pr_err("undefined smmu client\n");
@@ -111,7 +113,9 @@ static void msm_smmu_detach(struct msm_mmu *mmu, const char * const *names,
 
 	pm_runtime_get_sync(mmu->dev);
 	msm_dma_unmap_all_for_dev(client->dev);
-	iommu_detach_device(client->domain, client->dev);
+	rc = qcom_iommu_sid_switch(client->dev, SID_RELEASE);
+	if (rc)
+		DRM_ERROR("iommu sid switch failed (%d)\n", rc);
 
 	client->dma_ops = get_dma_ops(client->dev);
 	if (client->dma_ops) {
@@ -186,7 +190,7 @@ static int msm_smmu_map(struct msm_mmu *mmu, uint64_t iova,
 
 	if (sgt && sgt->sgl) {
 		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
-				sgt->nents, prot);
+				sgt->orig_nents, prot);
 		WARN_ON((int)ret < 0);
 		DRM_DEBUG("%pad/0x%x/0x%x/\n", &sgt->sgl->dma_address,
 				sgt->sgl->dma_length, prot);
@@ -241,9 +245,6 @@ static int msm_smmu_map_dma_buf(struct msm_mmu *mmu, struct sg_table *sgt,
 		DRM_ERROR("sg table is invalid\n");
 		return -ENOMEM;
 	}
-
-	if (flags & MSM_BO_KEEPATTRS)
-		attrs |= DMA_ATTR_IOMMU_USE_LLC_NWA;
 
 	/*
 	 * For import buffer type, dma_map_sg_attrs is called during
@@ -527,8 +528,8 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	if (!client->dev->dma_parms)
 		client->dev->dma_parms = devm_kzalloc(client->dev,
 				sizeof(*client->dev->dma_parms), GFP_KERNEL);
-	dma_set_max_seg_size(client->dev, DMA_BIT_MASK(32));
-	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
+	dma_set_max_seg_size(client->dev, UINT_MAX);
+	dma_set_seg_boundary(client->dev, ULONG_MAX);
 
 	iommu_set_fault_handler(client->domain,
 			msm_smmu_fault_handler, (void *)client);

@@ -152,7 +152,8 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 			video_mode ? "vid" : "cmd");
 }
 
-static int dsi_bridge_attach(struct drm_bridge *bridge)
+static int dsi_bridge_attach(struct drm_bridge *bridge,
+		enum drm_bridge_attach_flags flags)
 {
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
@@ -1094,7 +1095,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 		return 0;
 	}
 
-	c_bridge = to_dsi_bridge(encoder->bridge);
+	c_bridge = to_dsi_bridge(drm_bridge_chain_get_first_bridge(encoder));
 	adj_mode = c_bridge->dsi_mode;
 	display = c_bridge->display;
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
@@ -1176,13 +1177,13 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 	bridge->base.funcs = &dsi_bridge_ops;
 	bridge->base.encoder = encoder;
 
-	rc = drm_bridge_attach(encoder, &bridge->base, NULL);
+	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
 		DSI_ERR("failed to attach bridge, rc=%d\n", rc);
 		goto error_free_bridge;
 	}
 
-	encoder->bridge = &bridge->base;
+	/* 5.10: drm_bridge_attach() put the bridge on encoder->bridge_chain */
 	return bridge;
 error_free_bridge:
 	kfree(bridge);
@@ -1193,7 +1194,7 @@ error:
 void dsi_drm_bridge_cleanup(struct dsi_bridge *bridge)
 {
 	if (bridge && bridge->base.encoder)
-		bridge->base.encoder->bridge = NULL;
+		drm_bridge_remove(&bridge->base);
 
 	kfree(bridge);
 }
