@@ -72,7 +72,11 @@ enum v4l2_mpeg_vidc_video_bitrate_mode {
 		V4L2_MPEG_VIDEO_BITRATE_MODE_CBR + 1,
 	V4L2_MPEG_VIDEO_BITRATE_MODE_MBR,
 	V4L2_MPEG_VIDEO_BITRATE_MODE_MBR_VFR,
-	V4L2_MPEG_VIDEO_BITRATE_MODE_CQ,
+	/*
+	 * msm-5.4 value (5). Upstream 5.6+ added V4L2_MPEG_VIDEO_BITRATE_MODE_CQ
+	 * as 2, which this driver/HAL use for CBR_VFR.
+	 */
+	V4L2_MPEG_VIDEO_BITRATE_MODE_CQ_MSM,
 };
 /* missing v4l2 entries end */
 
