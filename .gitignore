@@ -158,7 +158,7 @@ x509.genkey
 arch/*/configs/vendor/*_defconfig
 
 # vendor device tree directories
-arch/arm64/boot/dts/vendor
+# haydn: the lahaina/haydn DTs live in-tree (arch/arm64/boot/dts/vendor)
 arch/arm/boot/dts/vendor
 
 # Documentation toolchain
