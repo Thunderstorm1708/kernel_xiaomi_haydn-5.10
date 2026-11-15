@@ -179,4 +179,11 @@ of_thermal_get_trip_points(struct thermal_zone_device *tz)
 }
 #endif
 
+
+/* Xiaomi thermal_message node (thermal_message.c) */
+extern struct class thermal_class;
+extern struct device thermal_message_dev;
+int thermal_message_node_create(void);
+void thermal_message_node_destroy(void);
+
 #endif /* __THERMAL_CORE_H__ */

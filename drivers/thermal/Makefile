@@ -62,4 +62,5 @@ obj-$(CONFIG_UNIPHIER_THERMAL)	+= uniphier_thermal.o
 obj-$(CONFIG_AMLOGIC_THERMAL)     += amlogic_thermal.o
 obj-$(CONFIG_SPRD_THERMAL)	+= sprd_thermal.o
 obj-$(CONFIG_KHADAS_MCU_FAN_THERMAL)	+= khadas_mcu_fan.o
+thermal_sys-$(CONFIG_MI_THERMAL_MESSAGE) += thermal_message.o
 obj-$(CONFIG_MI_THERMAL_INTERFACE) += mi_thermal_interface.o

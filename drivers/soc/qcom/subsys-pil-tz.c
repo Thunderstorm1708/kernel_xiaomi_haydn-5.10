@@ -604,7 +604,26 @@ static int pil_init_image_trusted(struct pil_desc *pil,
 	if (ret)
 		return ret;
 
-	scm_ret = qcom_scm_pas_init_image(d->pas_id, metadata, size);
+	/*
+	 * msm-5.10 qcom_scm_pas_init_image() takes the physical address of the
+	 * metadata. The blob gets XPU protected during the call, so it has to
+	 * be physically contiguous, 4K aligned and uncached (msm-5.4 did this
+	 * inside qcom_scm).
+	 */
+	{
+		dma_addr_t mdata_phys;
+		void *mdata_buf;
+
+		mdata_buf = dma_alloc_coherent(pil->dev, size, &mdata_phys,
+					       GFP_KERNEL);
+		if (!mdata_buf) {
+			scm_pas_disable_bw();
+			return -ENOMEM;
+		}
+		memcpy(mdata_buf, metadata, size);
+		scm_ret = qcom_scm_pas_init_image(d->pas_id, mdata_phys);
+		dma_free_coherent(pil->dev, size, mdata_buf, mdata_phys);
+	}
 
 	scm_pas_disable_bw();
 	return scm_ret;

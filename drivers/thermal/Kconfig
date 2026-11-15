@@ -511,9 +511,17 @@ config KHADAS_MCU_FAN_THERMAL
 	  by the Microcontroller found on the Khadas VIM boards.
 
 
+config MI_THERMAL_MESSAGE
+	bool "Xiaomi thermal_message sysfs node"
+	depends on THERMAL
+	help
+	  Creates /sys/class/thermal/thermal_message (sconfig, balance_mode,
+	  board_sensor_temp, ...) used by Xiaomi mi_thermald.
+
 config MI_THERMAL_INTERFACE
 	tristate "xiaomi thermal control interface"
 	depends on THERMAL
+	select MI_THERMAL_MESSAGE
 	default n
 	help
 	  This is xiaomi thermal control interface.

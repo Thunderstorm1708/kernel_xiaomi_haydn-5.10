@@ -998,10 +998,11 @@ static void thermal_release(struct device *dev)
 	}
 }
 
-static struct class thermal_class = {
+struct class thermal_class = {
 	.name = "thermal",
 	.dev_release = thermal_release,
 };
+EXPORT_SYMBOL_GPL(thermal_class);
 
 static inline
 void print_bind_err_msg(struct thermal_zone_device *tz,
@@ -1669,6 +1670,11 @@ static int __init thermal_init(void)
 	result = class_register(&thermal_class);
 	if (result)
 		goto unregister_governors;
+
+#ifdef CONFIG_MI_THERMAL_MESSAGE
+	if (thermal_message_node_create())
+		pr_warn("Thermal: failed to create thermal_message node\n");
+#endif
 
 	result = of_parse_thermal_zones();
 	if (result)
