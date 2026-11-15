@@ -2,6 +2,6 @@
 # msm-5.4 lahaina techpacks, forward-ported to 5.10 one at a time.
 # Only the techpacks listed in TECHPACK_DIRS are built.
 TECHPACK ?= y
-TECHPACK_DIRS ?= stub display audio dataipa datarmnet datarmnet-ext video
+TECHPACK_DIRS ?= stub display audio dataipa datarmnet datarmnet-ext video camera
 
 obj-$(TECHPACK) += $(addsuffix /,$(TECHPACK_DIRS))

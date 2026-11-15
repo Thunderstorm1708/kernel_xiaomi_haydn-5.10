@@ -113,3 +113,6 @@ obj-y += drivers/
 else
 $(info Target not found)
 endif
+
+# clang 18: msm-5.4 code as is (behaviour unchanged)
+subdir-ccflags-y += -Wno-tautological-overlap-compare

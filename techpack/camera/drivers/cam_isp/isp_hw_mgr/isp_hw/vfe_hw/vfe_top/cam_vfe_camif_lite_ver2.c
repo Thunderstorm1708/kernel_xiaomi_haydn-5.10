@@ -36,7 +36,7 @@ struct cam_vfe_mux_camif_lite_data {
 		evt_payload[CAM_VFE_CAMIF_LITE_EVT_MAX];
 	struct list_head                      free_payload_list;
 	spinlock_t                            spin_lock;
-	struct timeval                        error_ts;
+	struct __kernel_old_timeval                        error_ts;
 };
 
 static int cam_vfe_camif_lite_get_evt_payload(

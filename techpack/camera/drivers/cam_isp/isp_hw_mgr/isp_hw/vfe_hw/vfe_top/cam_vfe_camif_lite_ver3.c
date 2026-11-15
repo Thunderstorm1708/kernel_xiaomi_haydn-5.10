@@ -40,10 +40,10 @@ struct cam_vfe_mux_camif_lite_data {
 	uint32_t                                     camif_debug;
 	struct cam_vfe_top_irq_evt_payload
 		evt_payload[CAM_VFE_CAMIF_LITE_EVT_MAX];
-	struct timeval                               sof_ts;
-	struct timeval                               epoch_ts;
-	struct timeval                               eof_ts;
-	struct timeval                               error_ts;
+	struct __kernel_old_timeval                               sof_ts;
+	struct __kernel_old_timeval                               epoch_ts;
+	struct __kernel_old_timeval                               eof_ts;
+	struct __kernel_old_timeval                               error_ts;
 };
 
 static int cam_vfe_camif_lite_get_evt_payload(

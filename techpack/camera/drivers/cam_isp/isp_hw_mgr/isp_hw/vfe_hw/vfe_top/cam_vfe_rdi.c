@@ -36,8 +36,8 @@ struct cam_vfe_mux_rdi_data {
 	spinlock_t                            spin_lock;
 
 	enum cam_isp_hw_sync_mode          sync_mode;
-	struct timeval                     sof_ts;
-	struct timeval                     error_ts;
+	struct __kernel_old_timeval                     sof_ts;
+	struct __kernel_old_timeval                     error_ts;
 };
 
 static int cam_vfe_rdi_get_evt_payload(
