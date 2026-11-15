@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
-#include <linux/dma-noncoherent.h>
+#include <linux/dma-map-ops.h>
 #include "ipa_i.h"
 #include "ipahal.h"
 #include "ipahal_nat.h"

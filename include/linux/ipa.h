@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_H_
@@ -19,14 +20,6 @@
 #define IPA_BW_THRESHOLD_MAX 3
 
 #define IPA_MAX_CH_STATS_SUPPORTED 5
-#define IPA_EP_ARR_SIZE 2
-#define IPA_EP_PER_REG 32
-
-/* Notifiers for rmnet driver */
-#define BUFF_ABOVE_HIGH_THRESHOLD_FOR_DEFAULT_PIPE        1
-#define BUFF_ABOVE_HIGH_THRESHOLD_FOR_COAL_PIPE           2
-#define BUFF_BELOW_LOW_THRESHOLD_FOR_DEFAULT_PIPE         3
-#define BUFF_BELOW_LOW_THRESHOLD_FOR_COAL_PIPE            4
 
 /**
  * the attributes of the socksv5 options
@@ -43,6 +36,12 @@
 #define IPA_SOCKsv5_ADD_V6_V4_COM_PM	1
 #define IPA_SOCKsv5_ADD_V4_V6_COM_PM	2
 #define IPA_SOCKsv5_ADD_V6_V6_COM_PM	3
+
+/* Notifiers for rmnet driver */
+#define BUFF_ABOVE_HIGH_THRESHOLD_FOR_DEFAULT_PIPE        1
+#define BUFF_ABOVE_HIGH_THRESHOLD_FOR_COAL_PIPE           2
+#define BUFF_BELOW_LOW_THRESHOLD_FOR_DEFAULT_PIPE         3
+#define BUFF_BELOW_LOW_THRESHOLD_FOR_COAL_PIPE            4
 
 /**
  * enum ipa_transport_type
@@ -492,6 +491,17 @@ struct ipa_ep_cfg_seq {
 	int seq_type;
 };
 
+/**
+ * struct ipa_ep_cfg_ucp - uCP config register
+ * @command: Command ID at uCP, that the packets should hit
+ *
+ * @enable: 0 - Disabled
+ *		1- Enabled
+ */
+struct ipa_ep_cfg_ucp {
+	u16 command;
+	u32 enable;
+};
 /**
  * struct ipa_ep_cfg_ulso - ULSO configurations
  * @ipid_min_max_idx: A value in the range [0, 2]. Determines the registers
@@ -961,6 +971,7 @@ struct ipa_uc_dbg_rtk_ring_stats {
 	u64 busyTime;
 } __packed;
 
+
 /**
  * struct IpaHwStatsWDIRxInfoData_t - Structure holding the WDI Rx channel
  * structures
@@ -1053,6 +1064,8 @@ struct IpaHwStatsWDIInfoData_t {
  * uc is writing (WDI-2.0)
  * @rdy_comp_ring_size: size of the Rx_completion ring in bytes
  * expected to communicate about the Read pointer into the Rx Ring
+ * @is_txr_rn_db_pcie_addr: tx ring PCIE doorbell address
+ * @is_evt_rn_db_pcie_addr: event ring PCIE doorbell address
  */
 struct ipa_wdi_ul_params {
 	phys_addr_t rdy_ring_base_pa;
@@ -1073,6 +1086,8 @@ struct ipa_wdi_ul_params {
  * @rdy_ring_size: size of the Rx ring in bytes
  * @rdy_ring_rp_pa: physical address of the location through which IPA uc is
  * expected to communicate about the Read pointer into the Rx Ring
+ * @is_txr_rn_db_pcie_addr: tx ring PCIE doorbell address
+ * @is_evt_rn_db_pcie_addr: event ring PCIE doorbell address
  */
 struct ipa_wdi_ul_params_smmu {
 	struct sg_table rdy_ring;
@@ -1097,6 +1112,8 @@ struct ipa_wdi_ul_params_smmu {
  * write into to trigger the copy engine
  * @ce_ring_size: Copy Engine Ring size in bytes
  * @num_tx_buffers: Number of pkt buffers allocated
+ * @is_txr_rn_db_pcie_addr: tx ring PCIE doorbell address
+ * @is_evt_rn_db_pcie_addr: event ring PCIE doorbell address
  */
 struct ipa_wdi_dl_params {
 	phys_addr_t comp_ring_base_pa;
@@ -1118,6 +1135,8 @@ struct ipa_wdi_dl_params {
  * write into to trigger the copy engine
  * @ce_ring_size: Copy Engine Ring size in bytes
  * @num_tx_buffers: Number of pkt buffers allocated
+ * @is_txr_rn_db_pcie_addr: tx ring PCIE doorbell address
+ * @is_evt_rn_db_pcie_addr: event ring PCIE doorbell address
  */
 struct ipa_wdi_dl_params_smmu {
 	struct sg_table comp_ring;
@@ -1588,7 +1607,7 @@ int ipa_register_notifier(void *fn_ptr);
 /*
  * ipa_unregister_notifier - Unregister for IPA atomic notifier
  *
- * @fn_ptr - Same function pointer used to get the notification
+ * @fn_ptr - Function pointer to get the notification
  *
  * This funciton will return 0 on success, -EAGAIN if reg fails.
  */
@@ -1693,6 +1712,7 @@ int ipa_dma_init(void);
  */
 int ipa_dma_enable(void);
 
+
 /**
  * ipa_dma_disable()- Unvote for IPA clocks.
  *
@@ -1753,20 +1773,10 @@ void ipa_dma_destroy(void);
 /*
  * Miscellaneous
  */
-void ipa_bam_reg_dump(void);
 
 int ipa_get_ep_mapping(enum ipa_client_type client);
 
 bool ipa_is_ready(void);
-
-void ipa_proxy_clk_vote(void);
-void ipa_proxy_clk_unvote(void);
-
-#ifdef CONFIG_DEEPSLEEP
-int ipa_fmwk_deepsleep_entry_ipa(void);
-
-int ipa_fmwk_deepsleep_exit_ipa(void);
-#endif
 
 enum ipa_hw_type ipa_get_hw_type(void);
 
@@ -1783,14 +1793,14 @@ typedef void (*ipa_rmnet_ctl_stop_cb)(void *user_data);
 
 typedef void (*ipa_rmnet_ctl_rx_notify_cb)(void *user_data, void *rx_data);
 
+int ipa_get_default_aggr_time_limit(enum ipa_client_type client,
+	u32 *default_aggr_time_limit);
+
 typedef void (*ipa_rmnet_ll_ready_cb)(void *user_data);
 
 typedef void (*ipa_rmnet_ll_stop_cb)(void *user_data);
 
 typedef void (*ipa_rmnet_ll_rx_notify_cb)(void *user_data, void *rx_data);
-
-int ipa_get_default_aggr_time_limit(enum ipa_client_type client,
-	u32 *default_aggr_time_limit);
 
 /**
  * ipa_register_ipa_ready_cb() - register a callback to be invoked
@@ -2035,17 +2045,17 @@ static inline int ipa_rmnet_ll_xmit(struct sk_buff *skb)
 }
 
 /*
- * Yellow water mark notifier register
+ * Rmnet Notifier register
  */
-static inline int ipa_register_notifier(void *fn_ptr)
+static inline int ipa_register_notifier(struct sk_buff *skb)
 {
 	return -EPERM;
 }
 
 /*
- * Yellow water mark notifier unregister
+ * Rmnet Notifier unregister
  */
-static inline int ipa_unregister_notifier(void *fn_ptr)
+static inline int ipa_unregister_notifier(struct sk_buff *skb)
 {
 	return -EPERM;
 }
@@ -2150,7 +2160,6 @@ static inline void ipa_dma_destroy(void)
 /*
  * Miscellaneous
  */
-
 static inline int ipa_get_wdi_stats(struct IpaHwStatsWDIInfoData_t *stats)
 {
 	return -EPERM;
@@ -2171,16 +2180,6 @@ static inline bool ipa_is_ready(void)
 	return false;
 }
 
-static inline int ipa_fmwk_deepsleep_entry_ipa(void)
-{
-	return -EPERM;
-}
-
-static inline int ipa_fmwk_deepsleep_exit_ipa(void)
-{
-	return -EPERM;
-}
-
 static inline enum ipa_hw_type ipa_get_hw_type(void)
 {
 	return IPA_HW_None;
@@ -2189,6 +2188,12 @@ static inline enum ipa_hw_type ipa_get_hw_type(void)
 static inline int ipa_register_ipa_ready_cb(
 	void (*ipa_ready_cb)(void *user_data),
 	void *user_data)
+{
+	return -EPERM;
+}
+
+static inline int ipa_get_smmu_params(struct ipa_smmu_in_params *in,
+	struct ipa_smmu_out_params *out)
 {
 	return -EPERM;
 }
@@ -2246,6 +2251,12 @@ static inline int ipa_uc_reg_rdyCB(
 	return -EPERM;
 }
 
+static inline int ipa_get_default_aggr_time_limit(enum ipa_client_type client,
+	u32 *default_aggr_time_limit)
+{
+	return -EPERM;
+}
+
 static inline int ipa_register_rmnet_ll_cb(
 	void (*ipa_rmnet_ll_ready_cb)(void *user_data1),
 	void *user_data1,
@@ -2253,12 +2264,6 @@ static inline int ipa_register_rmnet_ll_cb(
 	void *user_data2,
 	void (*ipa_rmnet_ll_rx_notify_cb)(void *user_data3, void *rx_data),
 	void *user_data3)
-{
-	return -EPERM;
-}
-
-static inline int ipa_get_default_aggr_time_limit(enum ipa_client_type client,
-	u32 *default_aggr_time_limit)
 {
 	return -EPERM;
 }
@@ -2291,16 +2296,67 @@ static inline int ipa_put_hdr(u32 hdr_hdl)
 	return -EPERM;
 }
 
+static inline int ipa_copy_hdr(struct ipa_ioc_copy_hdr *copy)
+{
+	return -EPERM;
+}
+
+static inline int ipa_register_pull_msg(struct ipa_msg_meta *meta,
+	ipa_msg_pull_fn callback)
+{
+	return -EPERM;
+}
+
 static inline int ipa_deregister_pull_msg(struct ipa_msg_meta *meta)
 {
 	return -EPERM;
 }
 
-/*
- * Miscellaneous
- */
+static inline int ipa_register_intf_ext(const char *name,
+	const struct ipa_tx_intf *tx,
+	const struct ipa_rx_intf *rx,
+	const struct ipa_ext_intf *ext)
+{
+	return -EPERM;
+}
+
+static inline int ipa_tx_dp_mul(enum ipa_client_type src,
+	struct ipa_tx_data_desc *data_desc)
+{
+	return -EPERM;
+}
+
+static inline u16 ipa_get_smem_restr_bytes(void)
+{
+	return -EPERM;
+}
+
+static inline int ipa_create_wdi_mapping(u32 num_buffers,
+	struct ipa_wdi_buffer_info *info)
+{
+	return -EPERM;
+}
+
+static inline int ipa_release_wdi_mapping(u32 num_buffers,
+	struct ipa_wdi_buffer_info *info)
+{
+	return -EPERM;
+}
+
+static inline int ipa_rm_create_resource(
+	struct ipa_rm_create_params *create_params)
+{
+	return -EPERM;
+}
+
 static inline int ipa_rm_delete_resource(
 	enum ipa_rm_resource_name resource_name)
+{
+	return -EPERM;
+}
+
+static inline int ipa_rm_register(enum ipa_rm_resource_name resource_name,
+	struct ipa_rm_register_params *reg_params)
 {
 	return -EPERM;
 }
@@ -2389,6 +2445,18 @@ static inline enum ipa_rm_resource_name ipa_get_rm_resource_from_ep(
 	return -EPERM;
 }
 
+static inline void ipa_bam_reg_dump(void)
+{
+}
+
+static inline void ipa_proxy_clk_vote(void)
+{
+}
+
+static inline void ipa_proxy_clk_unvote(void)
+{
+}
+
 static inline bool ipa_is_client_handle_valid(u32 clnt_hdl)
 {
 	return false;
@@ -2431,3 +2499,4 @@ static inline int ipa_uc_dereg_rdyCB(void)
 }
 
 #endif /* _IPA_H_ */
+

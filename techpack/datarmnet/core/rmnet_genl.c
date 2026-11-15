@@ -15,10 +15,8 @@
 static struct nla_policy rmnet_genl_attr_policy[RMNET_CORE_GENL_ATTR_MAX +
 						1] = {
 	[RMNET_CORE_GENL_ATTR_INT]  = { .type = NLA_S32 },
-	[RMNET_CORE_GENL_ATTR_PID_BPS] = { .type = NLA_EXACT_LEN, .len =
-				sizeof(struct rmnet_core_pid_bps_resp) },
-	[RMNET_CORE_GENL_ATTR_PID_BOOST] = { .type = NLA_EXACT_LEN, .len =
-				sizeof(struct rmnet_core_pid_boost_req) },
+	[RMNET_CORE_GENL_ATTR_PID_BPS] = NLA_POLICY_EXACT_LEN(sizeof(struct rmnet_core_pid_bps_resp)),
+	[RMNET_CORE_GENL_ATTR_PID_BOOST] = NLA_POLICY_EXACT_LEN(sizeof(struct rmnet_core_pid_boost_req)),
 	[RMNET_CORE_GENL_ATTR_STR]  = { .type = NLA_NUL_STRING, .len =
 				RMNET_CORE_GENL_MAX_STR_LEN },
 };
@@ -69,7 +67,7 @@ int rmnet_core_userspace_connected;
 
 struct rmnet_pid_node_s {
 	struct hlist_node list;
-	time_t timstamp_last_query;
+	time64_t timstamp_last_query;
 	u64 tx_bytes;
 	u64 tx_bytes_last_query;
 	u64 tx_bps;

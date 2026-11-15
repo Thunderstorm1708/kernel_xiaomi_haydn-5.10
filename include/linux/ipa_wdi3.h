@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018 - 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022 - 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_WDI3_H_
@@ -44,8 +44,8 @@ enum ipa_wdi_version {
  * @mac_addr_ad4_valid: bool to indicate whethere peer supports 4 address
  * scheme or not.
  * @sa_valid: bool to indicate whether SA has a valid entry in AST table.
- * @first_msdu_in_mpdu_flag: bool to indicate whether current packet is
- * first frame in mpdu aggregation or not.
+ * @first_msdu_in_mpdu_flag: bool to indicate whether current packet is first
+ * frame in mpdu aggregation or not.
  * @sa_idx: Index to AST table.
  * @sa_peer_id: TA peer id associated with SA.
  * @ta_peer_id: TA peer id for the current frame.
@@ -73,6 +73,7 @@ typedef void (*ipa_wdi_mesh_ast_notifier_cb)(void *priv, unsigned long data);
  * @wdi_notify: bw notification cb
  * inst_id: Instance ID
  * @ast_update: AST update needed or not.
+ * @rx_tlv_format: need to identify rx tlv format hsp(1)/pine(0).
  */
 struct ipa_wdi_init_in_params {
 	enum ipa_wdi_version wdi_version;
@@ -83,6 +84,8 @@ struct ipa_wdi_init_in_params {
 #endif
 	int inst_id;
 	bool ast_update;
+	bool is_hsp;
+	u8 rx_tlv_format;
 };
 
 /**
@@ -330,12 +333,6 @@ int ipa_wdi_get_capabilities(
  */
 int ipa_wdi_init(struct ipa_wdi_init_in_params *in,
 	struct ipa_wdi_init_out_params *out);
-
-/** ipa_get_wdi_version - return wdi version
- *
- * @Return void
- */
-int ipa_get_wdi_version(void);
 
 /** ipa_wdi_is_tx1_used - return if DBS mode is active
  *
@@ -601,6 +598,7 @@ int ipa_wdi_bw_monitor(struct ipa_wdi_bw_info *info);
  *
  */
 int ipa_wdi_sw_stats(struct ipa_wdi_tx_info *info);
+int ipa_get_wdi_version(void);
 
 #else /* IS_ENABLED(CONFIG_IPA3) */
 

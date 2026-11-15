@@ -175,7 +175,7 @@ static void ecm_ipa_packet_receive_notify
 	(void *priv, enum ipa_dp_evt_type evt, unsigned long data);
 static void ecm_ipa_tx_complete_notify
 	(void *priv, enum ipa_dp_evt_type evt, unsigned long data);
-static void ecm_ipa_tx_timeout(struct net_device *net);
+static void ecm_ipa_tx_timeout(struct net_device *net, unsigned int txqueue);
 static int ecm_ipa_stop(struct net_device *net);
 static void ecm_ipa_enable_data_path(struct ecm_ipa_dev *ecm_ipa_ctx);
 static int ecm_ipa_rules_cfg
@@ -1197,7 +1197,7 @@ out:
 	dev_kfree_skb_any(skb);
 }
 
-static void ecm_ipa_tx_timeout(struct net_device *net)
+static void ecm_ipa_tx_timeout(struct net_device *net, unsigned int txqueue)
 {
 	struct ecm_ipa_dev *ecm_ipa_ctx = netdev_priv(net);
 
@@ -1249,20 +1249,12 @@ static void ecm_ipa_debugfs_init(struct ecm_ipa_dev *ecm_ipa_ctx)
 		ECM_IPA_ERROR("could not create debugfs directory entry\n");
 		goto fail_directory;
 	}
-	file = debugfs_create_u8
+	debugfs_create_u8
 		("outstanding_high", flags_read_write,
 		ecm_ipa_ctx->directory, &ecm_ipa_ctx->outstanding_high);
-	if (!file) {
-		ECM_IPA_ERROR("could not create outstanding_high file\n");
-		goto fail_file;
-	}
-	file = debugfs_create_u8
+	debugfs_create_u8
 		("outstanding_low", flags_read_write,
 		ecm_ipa_ctx->directory, &ecm_ipa_ctx->outstanding_low);
-	if (!file) {
-		ECM_IPA_ERROR("could not create outstanding_low file\n");
-		goto fail_file;
-	}
 	file = debugfs_create_file
 		("outstanding", flags_read_only,
 		ecm_ipa_ctx->directory,
@@ -1272,12 +1264,8 @@ static void ecm_ipa_debugfs_init(struct ecm_ipa_dev *ecm_ipa_ctx)
 		goto fail_file;
 	}
 
-	file = debugfs_create_bool("is_vlan_mode", flags_read_only,
+	debugfs_create_bool("is_vlan_mode", flags_read_only,
 		ecm_ipa_ctx->directory, &ecm_ipa_ctx->is_vlan_mode);
-	if (!file) {
-		ECM_IPA_ERROR("could not create is_vlan_mode file\n");
-		goto fail_file;
-	}
 
 	ECM_IPA_DEBUG("debugfs entries were created\n");
 	ECM_IPA_LOG_EXIT();

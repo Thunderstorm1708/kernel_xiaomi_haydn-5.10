@@ -1319,7 +1319,7 @@ out:
 	return ret;
 }
 
-static void ipa3_wwan_tx_timeout(struct net_device *dev)
+static void ipa3_wwan_tx_timeout(struct net_device *dev, unsigned int txqueue)
 {
 	struct ipa3_wwan_private *wwan_ptr = netdev_priv(dev);
 
@@ -5069,33 +5069,17 @@ static void rmnet_ipa_debugfs_init(void)
 		}
 	}
 
-	dbgfs->dfile_outstanding_high = debugfs_create_u32("outstanding_high",
+	debugfs_create_u32("outstanding_high",
 		read_write_mode, dbgfs->dent,
 		&rmnet_ipa3_ctx->outstanding_high);
-	if (!dbgfs->dfile_outstanding_high ||
-		IS_ERR(dbgfs->dfile_outstanding_high)) {
-		pr_err("failed to create file for outstanding_high\n");
-		goto fail;
-	}
 
-	dbgfs->dfile_outstanding_high_ctl =
-		debugfs_create_u32("outstanding_high_ctl",
+	debugfs_create_u32("outstanding_high_ctl",
 		read_write_mode, dbgfs->dent,
 		&rmnet_ipa3_ctx->outstanding_high_ctl);
-	if (!dbgfs->dfile_outstanding_high_ctl ||
-		IS_ERR(dbgfs->dfile_outstanding_high_ctl)) {
-		pr_err("failed to create file for outstanding_high_ctl\n");
-		goto fail;
-	}
 
-	dbgfs->dfile_outstanding_low = debugfs_create_u32("outstanding_low",
+	debugfs_create_u32("outstanding_low",
 		read_write_mode, dbgfs->dent,
 		&rmnet_ipa3_ctx->outstanding_low);
-	if (!dbgfs->dfile_outstanding_low ||
-		IS_ERR(dbgfs->dfile_outstanding_low)) {
-		pr_err("failed to create file for outstanding_low\n");
-		goto fail;
-	}
 
 	return;
 

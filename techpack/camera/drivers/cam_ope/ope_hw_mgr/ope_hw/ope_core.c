@@ -251,7 +251,7 @@ enable_soc_resource_failed:
 	else
 		core_info->cpas_start = false;
 free_cpas_vote:
-	kzfree(cpas_vote);
+	kfree_sensitive(cpas_vote);
 	cpas_vote = NULL;
 end:
 	return rc;

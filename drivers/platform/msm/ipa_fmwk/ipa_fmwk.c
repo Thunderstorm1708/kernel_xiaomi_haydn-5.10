@@ -111,8 +111,7 @@ struct ipa_fmwk_contex {
 	struct mutex lock;
 	ipa_uc_ready_cb uc_ready_cb;
 	void *uc_ready_priv;
-	ipa_eth_ready_cb eth_ready_cb;
-	void *eth_userdata;
+	struct ipa_eth_ready *eth_ready_info;
 	enum ipa_uc_offload_proto proto;
 
 	/* ipa core driver APIs */
@@ -205,6 +204,14 @@ struct ipa_fmwk_contex {
 
 	int (*ipa_unregister_rmnet_ctl_cb)(void);
 
+	int (*ipa_add_hdr)(struct ipa_ioc_add_hdr *hdrs);
+
+	int (*ipa_del_hdr)(struct ipa_ioc_del_hdr *hdls);
+
+	int (*ipa_get_hdr)(struct ipa_ioc_get_hdr *lookup);
+
+	int (*ipa_deregister_intf)(const char *name);
+
 	/* rmnet_ll APIs */
 	int (*ipa_rmnet_ll_xmit)(struct sk_buff *skb);
 
@@ -222,14 +229,6 @@ struct ipa_fmwk_contex {
 	int (*ipa_register_notifier)(void *fn_ptr);
 
 	int (*ipa_unregister_notifier)(void *fn_ptr);
-
-	int (*ipa_add_hdr)(struct ipa_ioc_add_hdr *hdrs);
-
-	int (*ipa_del_hdr)(struct ipa_ioc_del_hdr *hdls);
-
-	int (*ipa_get_hdr)(struct ipa_ioc_get_hdr *lookup);
-
-	int (*ipa_deregister_intf)(const char *name);
 
 	/* ipa_usb APIs */
 	int (*ipa_usb_init_teth_prot)(enum ipa_usb_teth_prot teth_prot,
@@ -263,8 +262,6 @@ struct ipa_fmwk_contex {
 	/* ipa_wdi3 APIs */
 	int (*ipa_wdi_init)(struct ipa_wdi_init_in_params *in,
 		struct ipa_wdi_init_out_params *out);
-
-	int (*ipa_get_wdi_version)(void);
 
 	int (*ipa_wdi_cleanup)(void);
 
@@ -300,6 +297,8 @@ struct ipa_fmwk_contex {
 	int (*ipa_wdi_bw_monitor)(struct ipa_wdi_bw_info *info);
 
 	int (*ipa_wdi_sw_stats)(struct ipa_wdi_tx_info *info);
+
+	int (*ipa_get_wdi_version)(void);
 
 	int (*ipa_enable_wdi_pipe)(u32 clnt_hdl);
 
@@ -462,10 +461,6 @@ struct ipa_fmwk_contex {
 	int (*ipa_eth_client_set_perf_profile)(struct ipa_eth_client *client,
 		struct ipa_eth_perf_profile *profile);
 
-	int (*ipa_eth_client_conn_evt)(struct ipa_ecm_msg *msg);
-
-	int (*ipa_eth_client_disconn_evt)(struct ipa_ecm_msg *msg);
-
 	int (*ipa_get_default_aggr_time_limit)(enum ipa_client_type client,
 		u32 *default_aggr_time_limit);
 
@@ -513,13 +508,10 @@ static inline void ipa_late_register_ready_cb(void)
 		}
 	}
 
-	if (ipa_fmwk_ctx->eth_ready_cb) {
-		struct ipa_eth_ready ready_info;
-
+	if (ipa_fmwk_ctx->eth_ready_info) {
 		/* just late call to ipa_eth_register_ready_cb */
-		ready_info.notify = ipa_fmwk_ctx->eth_ready_cb;
-		ready_info.userdata = ipa_fmwk_ctx->eth_userdata;
-		ipa_fmwk_ctx->ipa_eth_register_ready_cb(&ready_info);
+		ipa_fmwk_ctx->ipa_eth_register_ready_cb(
+			ipa_fmwk_ctx->eth_ready_info);
 		/* nobody cares anymore about ready_info->is_eth_ready since
 		 * if we got here it means that we already returned false there
 		 */
@@ -583,6 +575,7 @@ int ipa_fmwk_register_ipa(const struct ipa_core_data *in)
 	ipa_fmwk_ctx->ipa_register_rmnet_ctl_cb = in->ipa_register_rmnet_ctl_cb;
 	ipa_fmwk_ctx->ipa_unregister_rmnet_ctl_cb =
 		in->ipa_unregister_rmnet_ctl_cb;
+	ipa_fmwk_ctx->ipa_get_default_aggr_time_limit = in->ipa_get_default_aggr_time_limit;
 	ipa_fmwk_ctx->ipa_enable_wdi_pipe = in->ipa_enable_wdi_pipe;
 	ipa_fmwk_ctx->ipa_disable_wdi_pipe = in->ipa_disable_wdi_pipe;
 	ipa_fmwk_ctx->ipa_resume_wdi_pipe = in->ipa_resume_wdi_pipe;
@@ -596,10 +589,7 @@ int ipa_fmwk_register_ipa(const struct ipa_core_data *in)
 	ipa_fmwk_ctx->ipa_unregister_rmnet_ll_cb =
 		in->ipa_unregister_rmnet_ll_cb;
 	ipa_fmwk_ctx->ipa_register_notifier =
-		in->ipa_register_notifier;
-	ipa_fmwk_ctx->ipa_unregister_notifier =
 		in->ipa_unregister_notifier;
-	ipa_fmwk_ctx->ipa_get_default_aggr_time_limit = in->ipa_get_default_aggr_time_limit;
 	ipa_fmwk_ctx->ipa_add_socksv5_conn = in->ipa_add_socksv5_conn;
 	ipa_fmwk_ctx->ipa_del_socksv5_conn = in->ipa_del_socksv5_conn;
 
@@ -622,40 +612,6 @@ bool ipa_is_ready(void)
 	return ipa_fmwk_ctx->ipa_ready;
 }
 EXPORT_SYMBOL(ipa_is_ready);
-
-#ifdef CONFIG_DEEPSLEEP
-int ipa_fmwk_deepsleep_entry_ipa(void)
-{
-	if (!ipa_fmwk_ctx) {
-		pr_err("ipa framework hasn't been initialized yet\n");
-		return -EPERM;
-	}
-
-	mutex_lock(&ipa_fmwk_ctx->lock);
-	ipa_fmwk_ctx->ipa_ready = false;
-	mutex_unlock(&ipa_fmwk_ctx->lock);
-	pr_info("IPA driver is now in exit state\n");
-
-	return 0;
-}
-EXPORT_SYMBOL(ipa_fmwk_deepsleep_entry_ipa);
-
-int ipa_fmwk_deepsleep_exit_ipa(void)
-{
-	if (!ipa_fmwk_ctx) {
-		pr_err("ipa framework hasn't been initialized yet\n");
-		return -EPERM;
-	}
-
-	mutex_lock(&ipa_fmwk_ctx->lock);
-	ipa_trigger_ipa_ready_cbs();
-	ipa_fmwk_ctx->ipa_ready = true;
-	mutex_unlock(&ipa_fmwk_ctx->lock);
-	pr_info("IPA driver is now in ready state\n");
-	return 0;
-}
-EXPORT_SYMBOL(ipa_fmwk_deepsleep_exit_ipa);
-#endif
 
 int ipa_register_ipa_ready_cb(void(*ipa_ready_cb)(void *user_data),
 	void *user_data)
@@ -1396,16 +1352,6 @@ int ipa_wdi_init(struct ipa_wdi_init_in_params *in,
 }
 EXPORT_SYMBOL(ipa_wdi_init);
 
-int ipa_get_wdi_version(void)
-{
-	int ret;
-
-	IPA_FMWK_DISPATCH_RETURN(ipa_get_wdi_version);
-
-	return ret;
-}
-EXPORT_SYMBOL(ipa_get_wdi_version);
-
 bool ipa_wdi_is_tx1_used(void)
 {
 	int ret;
@@ -1669,6 +1615,16 @@ int ipa_wdi_get_stats(struct IpaHwStatsWDIInfoData_t *stats)
 	return ret;
 }
 EXPORT_SYMBOL(ipa_wdi_get_stats);
+
+int ipa_get_wdi_version(void)
+{
+	int ret;
+
+	IPA_FMWK_DISPATCH_RETURN(ipa_get_wdi_version);
+
+	return ret;
+}
+EXPORT_SYMBOL(ipa_get_wdi_version);
 
 int ipa_enable_wdi_pipe(u32 clnt_hdl)
 {
@@ -2446,8 +2402,6 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 		|| ipa_fmwk_ctx->ipa_eth_client_reg_intf
 		|| ipa_fmwk_ctx->ipa_eth_client_unreg_intf
 		|| ipa_fmwk_ctx->ipa_eth_client_set_perf_profile
-		|| ipa_fmwk_ctx->ipa_eth_client_conn_evt
-		|| ipa_fmwk_ctx->ipa_eth_client_disconn_evt
 		|| ipa_fmwk_ctx->ipa_eth_get_ipa_client_type_from_eth_type
 		|| ipa_fmwk_ctx->ipa_eth_client_exist) {
 		pr_err("ipa_eth APIs were already initialized\n");
@@ -2464,9 +2418,6 @@ int ipa_fmwk_register_ipa_eth(const struct ipa_eth_data *in)
 	ipa_fmwk_ctx->ipa_eth_client_unreg_intf = in->ipa_eth_client_unreg_intf;
 	ipa_fmwk_ctx->ipa_eth_client_set_perf_profile =
 		in->ipa_eth_client_set_perf_profile;
-	ipa_fmwk_ctx->ipa_eth_client_conn_evt = in->ipa_eth_client_conn_evt;
-	ipa_fmwk_ctx->ipa_eth_client_disconn_evt =
-		in->ipa_eth_client_disconn_evt;
 	ipa_fmwk_ctx->ipa_eth_get_ipa_client_type_from_eth_type =
 		in->ipa_eth_get_ipa_client_type_from_eth_type;
 	ipa_fmwk_ctx->ipa_eth_client_exist =
@@ -2494,8 +2445,7 @@ int ipa_eth_register_ready_cb(struct ipa_eth_ready *ready_info)
 		mutex_unlock(&ipa_fmwk_ctx->lock);
 		return ret;
 	}
-	ipa_fmwk_ctx->eth_ready_cb = ready_info->notify;
-	ipa_fmwk_ctx->eth_userdata = ready_info->userdata;
+	ipa_fmwk_ctx->eth_ready_info = ready_info;
 	ready_info->is_eth_ready = false;
 	mutex_unlock(&ipa_fmwk_ctx->lock);
 
@@ -2569,28 +2519,6 @@ int ipa_eth_client_set_perf_profile(struct ipa_eth_client *client,
 	return ret;
 }
 EXPORT_SYMBOL(ipa_eth_client_set_perf_profile);
-
-int ipa_eth_client_conn_evt(struct ipa_ecm_msg *msg)
-{
-	int ret;
-
-	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_client_conn_evt,
-		msg);
-
-	return ret;
-}
-EXPORT_SYMBOL(ipa_eth_client_conn_evt);
-
-int ipa_eth_client_disconn_evt(struct ipa_ecm_msg *msg)
-{
-	int ret;
-
-	IPA_FMWK_DISPATCH_RETURN_DP(ipa_eth_client_disconn_evt,
-		msg);
-
-	return ret;
-}
-EXPORT_SYMBOL(ipa_eth_client_disconn_evt);
 
 int ipa_get_default_aggr_time_limit(enum ipa_client_type client,
 				u32 *default_aggr_time_limit)
