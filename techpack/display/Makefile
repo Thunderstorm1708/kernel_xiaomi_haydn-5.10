@@ -12,13 +12,9 @@ LINUXINCLUDE    += -include $(srctree)/techpack/display/config/gki_konadispconf.
 endif
 
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
-     ifeq ($(CONFIG_QGKI), y)
-		include $(srctree)/techpack/display/config/lahainadisp.conf
+# haydn: same feature set as the 5.4 (QGKI) build
+include $(srctree)/techpack/display/config/lahainadisp.conf
 LINUXINCLUDE    += -include $(srctree)/techpack/display/config/lahainadispconf.h
-     else
-		include $(srctree)/techpack/display/config/gki_lahainadisp.conf
-LINUXINCLUDE    += -include $(srctree)/techpack/display/config/gki_lahainadispconf.h
-     endif
 endif
 
 ifeq ($(CONFIG_ARCH_HOLI), y)

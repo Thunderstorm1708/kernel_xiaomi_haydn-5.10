@@ -15,4 +15,4 @@
 #define CONFIG_DRM_SDE_EVTLOG_DEBUG 1
 #define CONFIG_QCOM_MDSS_PLL 1
 #define CONFIG_DRM_SDE_RSC 1
-#define CONFIG_DRM_SDE_VM 1
+/* haydn 5.10: no Haven VM support (CONFIG_DRM_SDE_VM) */
