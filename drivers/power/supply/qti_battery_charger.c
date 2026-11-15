@@ -28,6 +28,25 @@
 
 #include "qti_battery_charger.h"
 
+/*
+ * msm-5.10 battery charger API used by qcom-hv-haptics. The Xiaomi 5.4
+ * charger has no HBoost VMAX notification from the ADSP, so the chain
+ * simply never fires.
+ */
+static RAW_NOTIFIER_HEAD(hboost_notifier);
+
+int register_hboost_event_notifier(struct notifier_block *nb)
+{
+	return raw_notifier_chain_register(&hboost_notifier, nb);
+}
+EXPORT_SYMBOL(register_hboost_event_notifier);
+
+int unregister_hboost_event_notifier(struct notifier_block *nb)
+{
+	return raw_notifier_chain_unregister(&hboost_notifier, nb);
+}
+EXPORT_SYMBOL(unregister_hboost_event_notifier);
+
 static const int battery_prop_map[BATT_PROP_MAX] = {
 	[BATT_STATUS]		= POWER_SUPPLY_PROP_STATUS,
 	[BATT_HEALTH]		= POWER_SUPPLY_PROP_HEALTH,
