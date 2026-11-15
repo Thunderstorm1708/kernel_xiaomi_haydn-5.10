@@ -236,4 +236,24 @@ extern int calibrate_405(struct tsens_device *tmdev);
 extern int tsens_2xxx_get_zeroc_status(
 		struct tsens_sensor *sensor, int *status);
 
+
+/*
+ * msm-5.4 of-thermal had of_thermal_handle_trip{,_temp}() to fan a TSENS
+ * threshold interrupt out to every zone sharing the sensor. 5.10 of-thermal
+ * has no sensor->zones aggregation, so just re-evaluate the zone.
+ */
+static inline void of_thermal_handle_trip_temp(struct device *dev,
+		struct thermal_zone_device *tz, int trip_temp)
+{
+	if (!IS_ERR_OR_NULL(tz))
+		thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
+}
+
+static inline void of_thermal_handle_trip(struct device *dev,
+		struct thermal_zone_device *tz)
+{
+	if (!IS_ERR_OR_NULL(tz))
+		thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
+}
+
 #endif /* __QCOM_TSENS_H__ */

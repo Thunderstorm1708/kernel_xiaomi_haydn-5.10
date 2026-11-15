@@ -64,3 +64,7 @@ obj-$(CONFIG_SPRD_THERMAL)	+= sprd_thermal.o
 obj-$(CONFIG_KHADAS_MCU_FAN_THERMAL)	+= khadas_mcu_fan.o
 thermal_sys-$(CONFIG_MI_THERMAL_MESSAGE) += thermal_message.o
 obj-$(CONFIG_MI_THERMAL_INTERFACE) += mi_thermal_interface.o
+
+# msm-5.4 style TSENS (lahaina DT: qcom,tsens24xx)
+obj-$(CONFIG_THERMAL_TSENS)	+= msm-tsens-driver.o
+msm-tsens-driver-objs	:= msm-tsens.o tsens2xxx.o tsens-dbg.o tsens-mtc.o tsens1xxx.o tsens-calib.o
