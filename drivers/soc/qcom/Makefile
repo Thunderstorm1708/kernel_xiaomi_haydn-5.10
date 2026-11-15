@@ -56,7 +56,7 @@ minidump-y	 += msm_minidump.o minidump_log.o
 minidump-$(CONFIG_QCOM_MINIDUMP_PANIC_DUMP) += minidump_memory.o
 obj-$(CONFIG_QCOM_VA_MINIDUMP) += qcom_va_minidump.o
 obj-$(CONFIG_QCOM_MEM_OFFLINE) += mem-offline.o
-obj-$(CONFIG_QCOM_MEM_BUF) += mem_buf/
+obj-$(CONFIG_QCOM_MEM_BUF_DEV) += mem_buf/
 obj-$(CONFIG_QCOM_MEMORY_DUMP_V2) += memory_dump_v2.o
 obj-$(CONFIG_QCOM_DCC_V2) += dcc_v2.o
 obj-$(CONFIG_MSM_JTAGV8) += jtagv8.o jtagv8-etm.o
@@ -95,7 +95,11 @@ obj-$(CONFIG_QCOM_HYP_CORE_CTL) += hyp_core_ctl.o
 obj-$(CONFIG_MSM_QBT_HANDLER) += qbt_handler.o
 obj-$(CONFIG_QTI_CRYPTO_COMMON) += crypto-qti-common.o
 obj-$(CONFIG_QTI_CRYPTO_TZ) += crypto-qti-tz.o
+ifeq ($(CONFIG_QTI_HW_KEY_MANAGER_V1),y)
+obj-$(CONFIG_QTI_HW_KEY_MANAGER) += hwkm_v1/
+else
 obj-$(CONFIG_QTI_HW_KEY_MANAGER) += hwkm.o crypto-qti-hwkm.o
+endif
 obj-$(CONFIG_QCOM_WDT_CORE) += qcom_wdt_core.o
 obj-$(CONFIG_QCOM_SOC_WATCHDOG) += qcom_soc_wdt.o
 ifdef CONFIG_DEBUG_FS

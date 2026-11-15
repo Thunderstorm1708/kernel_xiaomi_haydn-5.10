@@ -27,6 +27,14 @@ struct ice_mmio_data {
 #endif
 };
 
+/* HWKM v1 (lahaina): tell the backend where the ICE HWKM slave lives */
+#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
+void crypto_qti_platform_set_mmio(const struct ice_mmio_data *mmio_data);
+#else
+static inline void crypto_qti_platform_set_mmio(const struct ice_mmio_data *mmio_data)
+{}
+#endif
+
 #if IS_ENABLED(CONFIG_QTI_CRYPTO_COMMON)
 int crypto_qti_init_crypto(void *mmio_data);
 int crypto_qti_enable(void *mmio_data);
