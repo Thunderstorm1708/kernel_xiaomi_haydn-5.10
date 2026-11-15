@@ -19,7 +19,12 @@ ifeq ($(CONFIG_ARCH_KONA), y)
 include $(srctree)/techpack/audio/config/konaauto.conf
 endif
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
+# HAYDN_AUDIO_STAGE=boot builds only the ADSP boot/supervision modules
+ifeq ($(HAYDN_AUDIO_STAGE),full)
 include $(srctree)/techpack/audio/config/lahainaauto.conf
+else
+include $(srctree)/techpack/audio/config/lahainaauto_boot.conf
+endif
 endif
 ifeq ($(CONFIG_ARCH_HOLI), y)
 include $(srctree)/techpack/audio/config/holiauto.conf
