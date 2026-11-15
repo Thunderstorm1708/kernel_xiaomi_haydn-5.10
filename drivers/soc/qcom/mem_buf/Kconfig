@@ -12,4 +12,7 @@ config QCOM_MEM_BUF
 	  If unsure, say N
 
 config QCOM_MEM_BUF_DEV
-	tristate
+	tristate "Qualcomm Technologies, Inc. DMA-BUF VM permission tracking"
+	help
+	  mem_buf vmperm helpers used by KGSL, qseecom and the DMA-BUF heaps.
+	  Works without Gunyah (the hypervisor calls are stubbed out).
