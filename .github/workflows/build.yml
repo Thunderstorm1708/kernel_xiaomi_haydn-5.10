@@ -1,0 +1,63 @@
+name: Build haydn 5.10 kernel
+
+on:
+  push:
+    branches: [ haydn-5.10 ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      ARCH: arm64
+      LLVM: 1
+      LLVM_IAS: 1
+      KCONFIGS: gki_defconfig vendor/lahaina_GKI.config vendor/haydn_GKI.config
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 llvm-18 flex bison bc libssl-dev libelf-dev \
+            dwarves cpio device-tree-compiler python3 kmod zip
+          for t in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip; do
+            sudo ln -sf /usr/bin/$t-18 /usr/local/bin/$t
+          done
+          clang --version
+
+      - name: Configure
+        run: make O=out $KCONFIGS
+
+      - name: Build Image, modules and dtbs
+        run: make O=out -j$(nproc --all) Image modules dtbs 2>&1 | tee build.log
+
+      - name: Package
+        if: always()
+        run: |
+          mkdir -p dist
+          cp out/arch/arm64/boot/Image dist/ 2>/dev/null || true
+          D=out/arch/arm64/boot/dts/vendor/qcom
+          cat $D/lahaina.dtb $D/lahaina-v2.dtb $D/lahaina-v2.1.dtb > dist/dtb 2>/dev/null || true
+          curl -fsSL "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" | base64 -d > mkdtboimg.py || true
+          [ -f $D/haydn-sm8350-overlay.dtbo ] && python3 mkdtboimg.py create dist/dtbo.img --page_size=4096 $D/haydn-sm8350-overlay.dtbo || true
+          make O=out INSTALL_MOD_PATH=$PWD/mods INSTALL_MOD_STRIP=1 modules_install 2>/dev/null || true
+          find mods -name '*.ko' -exec cp {} dist/ \; 2>/dev/null || true
+          cp out/.config dist/config
+          grep -E "error:|Error [0-9]" build.log | head -300 > dist/errors.txt || true
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: haydn-5.10-${{ github.run_number }}
+          path: dist/
