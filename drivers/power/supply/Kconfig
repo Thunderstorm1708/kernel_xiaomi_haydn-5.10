@@ -826,3 +826,40 @@ config CHARGER_BQ256XX
 source "drivers/power/supply/qcom/Kconfig"
 
 endif # POWER_SUPPLY
+
+config BQ2597X
+	bool "BQ2597X charger"
+	depends on QTI_BATTERY_CHARGER
+	help
+	  Say Y here to enable BQ2597X charger
+
+config BQ_FUEL_GAUGE
+	bool "BQ fuel gauge config"
+	depends on QTI_BATTERY_CHARGER
+	help
+	  Say Y here to enable BQ fuel gauge
+
+config BQ_CLOUD_AUTHENTICATION
+	bool "BQ cloud thentication config"
+	depends on QTI_BATTERY_CHARGER
+	help
+	  Say Y here to enable Bq cloud thentication
+
+config DUAL_FUEL_GAUGE
+	bool "Dual fuel gauge"
+	depends on QTI_BATTERY_CHARGER
+	help
+	  Say Y here to enable dual fuel gauge
+
+config BQ_FG_1S
+	bool "BQ 1S battery cell config"
+	depends on QTI_BATTERY_CHARGER
+	help
+	  Say Y here to enable BQ 1S battery cell
+
+
+
+
+
+
+
