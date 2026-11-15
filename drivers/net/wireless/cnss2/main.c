@@ -1602,6 +1602,18 @@ static int cnss_subsys_ramdump(int enable,
 static void cnss_recovery_work_handler(struct work_struct *work)
 {
 }
+
+/* SSR/PIL model (lahaina): recovery goes through subsystem restart */
+void cnss_recovery_handler(struct cnss_plat_data *plat_priv)
+{
+	struct cnss_subsys_info *subsys_info = &plat_priv->subsys_info;
+
+	set_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
+	if (subsys_info->subsys_device) {
+		subsys_set_crash_status(subsys_info->subsys_device, true);
+		subsystem_restart_dev(subsys_info->subsys_device);
+	}
+}
 #else
 void cnss_recovery_handler(struct cnss_plat_data *plat_priv)
 {
