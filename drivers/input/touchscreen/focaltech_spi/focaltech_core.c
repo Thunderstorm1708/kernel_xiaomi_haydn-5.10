@@ -878,13 +878,13 @@ static int fts_read_raw(struct fts_ts_data *ts_data, u8 *data, u32 datalen)
 	return ret;
 }
 
-static struct timeval get_timeval(const s64 nsec)
+static struct __kernel_old_timeval get_timeval(const s64 nsec)
 {
-	struct timespec ts = ns_to_timespec(nsec);
-	struct timeval tv;
+	struct timespec64 ts = ns_to_timespec64(nsec);
+	struct __kernel_old_timeval tv;
 
 	tv.tv_sec = ts.tv_sec;
-	tv.tv_usec = (suseconds_t) ts.tv_nsec / 1000;
+	tv.tv_usec = (__kernel_suseconds_t) ts.tv_nsec / 1000;
 
 	return tv;
 }

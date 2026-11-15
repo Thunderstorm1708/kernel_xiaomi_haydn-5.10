@@ -462,7 +462,7 @@ struct fts_test {
 	int csv_data_len;
 	int result;
 #if defined(TEST_SAVE_FAIL_RESULT) && TEST_SAVE_FAIL_RESULT
-	struct timeval tv;
+	struct __kernel_old_timeval tv;
 #endif
 	struct ini_data ini;
 	int open_min;
