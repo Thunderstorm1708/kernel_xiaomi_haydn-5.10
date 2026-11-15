@@ -3471,7 +3471,7 @@ static int __protect_cp_mem(struct venus_hfi_device *device)
 	}
 	mutex_unlock(&device->res->cb_lock);
 
-	rc = qcom_scm_mem_protect_video(memprot.cp_start, memprot.cp_size,
+	rc = qcom_scm_mem_protect_video_var(memprot.cp_start, memprot.cp_size,
 			memprot.cp_nonpixel_start, memprot.cp_nonpixel_size);
 
 	if (rc)
