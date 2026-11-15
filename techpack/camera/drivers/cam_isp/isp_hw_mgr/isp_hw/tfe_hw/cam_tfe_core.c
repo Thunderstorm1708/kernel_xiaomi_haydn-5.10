@@ -48,10 +48,10 @@ struct cam_tfe_top_priv {
 		axi_vote_control[CAM_TFE_TOP_IN_PORT_MAX];
 	uint32_t                          irq_prepared_mask[3];
 	void                            *tasklet_info;
-	struct timeval                    sof_ts;
-	struct timeval                    epoch_ts;
-	struct timeval                    eof_ts;
-	struct timeval                    error_ts;
+	struct __kernel_old_timeval                    sof_ts;
+	struct __kernel_old_timeval                    epoch_ts;
+	struct __kernel_old_timeval                    eof_ts;
+	struct __kernel_old_timeval                    error_ts;
 	uint32_t                          top_debug;
 };
 
@@ -175,9 +175,9 @@ int cam_tfe_get_hw_caps(void *hw_priv, void *get_hw_cap_args,
 
 void cam_tfe_get_timestamp(struct cam_isp_timestamp *time_stamp)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	ts = ktime_to_timespec(ktime_get_boottime());
+	ts = ktime_to_timespec64(ktime_get_boottime());
 	time_stamp->mono_time.tv_sec    = ts.tv_sec;
 	time_stamp->mono_time.tv_usec   = ts.tv_nsec/1000;
 }

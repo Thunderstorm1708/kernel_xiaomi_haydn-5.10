@@ -52,10 +52,10 @@ struct cam_vfe_mux_camif_data {
 	uint32_t                           camif_debug;
 	uint32_t                           dual_hw_idx;
 	uint32_t                           is_dual;
-	struct timeval                     sof_ts;
-	struct timeval                     epoch_ts;
-	struct timeval                     eof_ts;
-	struct timeval                     error_ts;
+	struct __kernel_old_timeval                     sof_ts;
+	struct __kernel_old_timeval                     epoch_ts;
+	struct __kernel_old_timeval                     eof_ts;
+	struct __kernel_old_timeval                     error_ts;
 };
 
 static int cam_vfe_camif_get_evt_payload(
