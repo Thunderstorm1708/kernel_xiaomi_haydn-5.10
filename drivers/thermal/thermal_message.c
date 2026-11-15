@@ -378,6 +378,9 @@ int __init thermal_message_node_create(void)
 {
 	int ret = 0;
 
+	if (of_parse_thermal_message())
+		pr_warn("Thermal: thermal-message board-sensor not found in DT\n");
+
 	thermal_message_dev.class = &thermal_class;
 
 	dev_set_name(&thermal_message_dev, "thermal_message");
