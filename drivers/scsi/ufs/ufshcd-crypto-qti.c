@@ -146,6 +146,13 @@ static int ufshcd_crypto_qti_derive_raw_secret(struct blk_keyslot_manager *ksm,
 		return err;
 	}
 
+	{
+		struct ice_mmio_data mmio_data;
+
+		get_mmio_data(&mmio_data, host);
+		crypto_qti_platform_set_mmio(&mmio_data);
+	}
+
 	err =  crypto_qti_derive_raw_secret(wrapped_key, wrapped_key_size,
 				secret, secret_size);
 	if (err)

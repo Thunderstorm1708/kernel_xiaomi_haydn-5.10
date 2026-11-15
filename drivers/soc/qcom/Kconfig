@@ -1223,6 +1223,15 @@ config QTI_HW_KEY_MANAGER
 	 HWKM hardware to perform key operations from the kernel which will
 	 be used for storage encryption.
 
+
+config QTI_HW_KEY_MANAGER_V1
+	bool "HWKM v1 (kernel programmed HWKM master, e.g. lahaina)"
+	depends on QTI_HW_KEY_MANAGER
+	help
+	  Use the HWKM v1 backend: the HWKM master is in the SoC (qcom,hwkm
+	  DT node) and wrapped keys are unwrapped and derived by the kernel,
+	  as on msm-5.4 lahaina. Without this, the TME based (waipio+) HWKM
+	  backend is used.
 config MSM_EXT_DISPLAY
 	tristate "MSM External Display Driver"
 	depends on DRM
