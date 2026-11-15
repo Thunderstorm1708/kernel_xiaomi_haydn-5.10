@@ -23,6 +23,14 @@
 #define RMNET_INGRESS_FORMAT_DL_MARKER_V1       BIT(30)
 #define RMNET_INGRESS_FORMAT_DL_MARKER_V2       BIT(29)
 
+/*
+ * Qualcomm rmnet flag values (netmgrd ABI). Upstream 5.10 if_link.h has
+ * RMNET_FLAGS_INGRESS_MAP_CKSUMV5 at bit 4; the msm datarmnet driver and
+ * its userspace use the values below.
+ */
+#undef RMNET_FLAGS_INGRESS_COALESCE
+#undef RMNET_FLAGS_INGRESS_MAP_CKSUMV5
+#undef RMNET_FLAGS_EGRESS_MAP_CKSUMV5
 #define RMNET_FLAGS_INGRESS_COALESCE            BIT(4)
 #define RMNET_FLAGS_INGRESS_MAP_CKSUMV5         BIT(5)
 #define RMNET_FLAGS_EGRESS_MAP_CKSUMV5          BIT(6)

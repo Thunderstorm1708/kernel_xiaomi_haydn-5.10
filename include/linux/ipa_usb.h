@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _IPA_USB_H_
@@ -19,6 +20,7 @@ enum ipa_usb_teth_prot {
 	IPA_USB_MBIM = 3,
 	IPA_USB_DIAG = 4,
 	IPA_USB_RMNET_CV2X = 5,
+	IPA_USB_GPS = 6,
 	IPA_USB_MAX_TETH_PROT_SIZE
 };
 
@@ -158,6 +160,7 @@ struct ipa_usb_xdci_chan_params {
 	u64 data_buff_base_addr_iova;
 	struct sg_table *sgt_xfer_rings;
 	struct sg_table *sgt_data_buff;
+	bool is_sw_path;
 };
 
 /**

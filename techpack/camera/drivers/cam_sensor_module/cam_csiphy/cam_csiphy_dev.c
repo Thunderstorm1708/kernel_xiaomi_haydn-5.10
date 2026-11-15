@@ -58,15 +58,8 @@ static int cam_csiphy_debug_register(struct csiphy_device *csiphy_dev)
 	snprintf(debugfs_name, 25, "%s%d%s", "csiphy",
 		csiphy_dev->soc_info.index,
 		"_en_irq_dump");
-	dbgfileptr = debugfs_create_bool(debugfs_name, 0644,
+	debugfs_create_bool(debugfs_name, 0644,
 		root_dentry, &csiphy_dev->enable_irq_dump);
-
-	if (IS_ERR(dbgfileptr)) {
-		if (PTR_ERR(dbgfileptr) == -ENODEV)
-			CAM_WARN(CAM_CSIPHY, "DebugFS not enabled in kernel!");
-		else
-			rc = PTR_ERR(dbgfileptr);
-	}
 end:
 	return rc;
 }

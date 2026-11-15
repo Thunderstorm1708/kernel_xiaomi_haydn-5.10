@@ -57,6 +57,7 @@
 #define IPA_SUBSYSTEM_NAME "ipa_fws"
 #define IPA_UC_SUBSYSTEM_NAME "ipa_uc"
 
+#include <linux/qcom-iommu-util.h>
 #include "ipa_i.h"
 #include "ipa_rm_i.h"
 #include "ipahal.h"

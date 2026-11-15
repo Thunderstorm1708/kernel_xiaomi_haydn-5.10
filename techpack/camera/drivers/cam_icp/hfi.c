@@ -903,7 +903,7 @@ void cam_hfi_deinit(void)
 	g_hfi->cmd_q_state = false;
 	g_hfi->msg_q_state = false;
 
-	kzfree(g_hfi);
+	kfree_sensitive(g_hfi);
 	g_hfi = NULL;
 
 err:

@@ -1219,7 +1219,7 @@ static int cam_tfe_top_set_axi_bw_vote(
 	}
 
 free_mem:
-	kzfree(agg_vote);
+	kfree_sensitive(agg_vote);
 	agg_vote = NULL;
 	return rc;
 }

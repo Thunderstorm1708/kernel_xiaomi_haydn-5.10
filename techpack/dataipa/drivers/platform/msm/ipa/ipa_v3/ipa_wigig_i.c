@@ -1969,33 +1969,17 @@ int ipa3_wigig_init_debugfs_i(struct dentry *parent)
 
 	wigig_dent = dent;
 
-	file = debugfs_create_u8("modc", read_write_mode, dent,
+	debugfs_create_u8("modc", read_write_mode, dent,
 		&int_modc);
-	if (IS_ERR_OR_NULL(file)) {
-		IPAERR("fail to create file modc\n");
-		goto fail;
-	}
 
-	file = debugfs_create_u16("modt", read_write_mode, dent,
+	debugfs_create_u16("modt", read_write_mode, dent,
 		&int_modt);
-	if (IS_ERR_OR_NULL(file)) {
-		IPAERR("fail to create file modt\n");
-		goto fail;
-	}
 
-	file = debugfs_create_u8("rx_mod_th", read_write_mode, dent,
+	debugfs_create_u8("rx_mod_th", read_write_mode, dent,
 		&rx_hwtail_mod_threshold);
-	if (IS_ERR_OR_NULL(file)) {
-		IPAERR("fail to create file rx_mod_th\n");
-		goto fail;
-	}
 
-	file = debugfs_create_u8("tx_mod_th", read_write_mode, dent,
+	debugfs_create_u8("tx_mod_th", read_write_mode, dent,
 		&tx_hwtail_mod_threshold);
-	if (IS_ERR_OR_NULL(file)) {
-		IPAERR("fail to create file tx_mod_th\n");
-		goto fail;
-	}
 
 	return 0;
 fail:

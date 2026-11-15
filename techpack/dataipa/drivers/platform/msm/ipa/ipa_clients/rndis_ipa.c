@@ -247,7 +247,7 @@ static void rndis_ipa_packet_receive_notify
 	(void *private, enum ipa_dp_evt_type evt, unsigned long data);
 static void rndis_ipa_tx_complete_notify
 	(void *private, enum ipa_dp_evt_type evt, unsigned long data);
-static void rndis_ipa_tx_timeout(struct net_device *net);
+static void rndis_ipa_tx_timeout(struct net_device *net, unsigned int txqueue);
 static int rndis_ipa_stop(struct net_device *net);
 static void rndis_ipa_enable_data_path(struct rndis_ipa_dev *rndis_ipa_ctx);
 static struct sk_buff *rndis_encapsulate_skb(struct sk_buff *skb,
@@ -1075,7 +1075,7 @@ out:
 	dev_kfree_skb_any(skb);
 }
 
-static void rndis_ipa_tx_timeout(struct net_device *net)
+static void rndis_ipa_tx_timeout(struct net_device *net, unsigned int txqueue)
 {
 	struct rndis_ipa_dev *rndis_ipa_ctx = netdev_priv(net);
 	int outstanding = atomic_read(&rndis_ipa_ctx->outstanding_pkts);
@@ -2166,47 +2166,27 @@ static void rndis_ipa_debugfs_init(struct rndis_ipa_dev *rndis_ipa_ctx)
 		goto fail_directory;
 	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("tx_filter", flags_read_write,
 		rndis_ipa_ctx->directory, &rndis_ipa_ctx->tx_filter);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create debugfs tx_filter file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("rx_filter", flags_read_write,
 		rndis_ipa_ctx->directory, &rndis_ipa_ctx->rx_filter);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create debugfs rx_filter file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("icmp_filter", flags_read_write,
 		rndis_ipa_ctx->directory, &rndis_ipa_ctx->icmp_filter);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create debugfs icmp_filter file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("outstanding_high", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->outstanding_high);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create outstanding_high file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("outstanding_low", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->outstanding_low);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create outstanding_low file\n");
-		goto fail_file;
-	}
 
 	file = debugfs_create_file
 		("outstanding", flags_read_only,
@@ -2217,29 +2197,17 @@ static void rndis_ipa_debugfs_init(struct rndis_ipa_dev *rndis_ipa_ctx)
 		goto fail_file;
 	}
 
-	file = debugfs_create_u8
+	debugfs_create_u8
 		("state", flags_read_only,
 		rndis_ipa_ctx->directory, (u8 *)&rndis_ipa_ctx->state);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create state file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("tx_dropped", flags_read_only,
 		rndis_ipa_ctx->directory, &rndis_ipa_ctx->tx_dropped);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create tx_dropped file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("rx_dropped", flags_read_only,
 		rndis_ipa_ctx->directory, &rndis_ipa_ctx->rx_dropped);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create rx_dropped file\n");
-		goto fail_file;
-	}
 
 	aggr_directory = debugfs_create_dir
 		(DEBUGFS_AGGR_DIR_NAME,
@@ -2258,101 +2226,57 @@ static void rndis_ipa_debugfs_init(struct rndis_ipa_dev *rndis_ipa_ctx)
 		goto fail_file;
 	}
 
-	file = debugfs_create_u8
+	debugfs_create_u8
 		("aggr_enable", flags_read_write,
 		aggr_directory, (u8 *)&ipa_to_usb_ep_cfg.aggr.aggr_en);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create aggr_enable file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u8
+	debugfs_create_u8
 		("aggr_type", flags_read_write,
 		aggr_directory, (u8 *)&ipa_to_usb_ep_cfg.aggr.aggr);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create aggr_type file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("aggr_byte_limit", flags_read_write,
 		aggr_directory,
 		&ipa_to_usb_ep_cfg.aggr.aggr_byte_limit);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create aggr_byte_limit file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("aggr_time_limit", flags_read_write,
 		aggr_directory,
 		&ipa_to_usb_ep_cfg.aggr.aggr_time_limit);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create aggr_time_limit file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("aggr_pkt_limit", flags_read_write,
 		aggr_directory,
 		&ipa_to_usb_ep_cfg.aggr.aggr_pkt_limit);
-	if (!file) {
-		RNDIS_IPA_ERROR("could not create aggr_pkt_limit file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("tx_dump_enable", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->tx_dump_enable);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create tx_dump_enable file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("rx_dump_enable", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->rx_dump_enable);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create rx_dump_enable file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("deaggregation_enable", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->deaggregation_enable);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create deaggregation_enable file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_u32
+	debugfs_create_u32
 		("error_msec_sleep_time", flags_read_write,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->error_msec_sleep_time);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create error_msec_sleep_time file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool
+	debugfs_create_bool
 		("during_xmit_error", flags_read_only,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->during_xmit_error);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create during_xmit_error file\n");
-		goto fail_file;
-	}
 
-	file = debugfs_create_bool("is_vlan_mode", flags_read_only,
+	debugfs_create_bool("is_vlan_mode", flags_read_only,
 		rndis_ipa_ctx->directory,
 		&rndis_ipa_ctx->is_vlan_mode);
-	if (!file) {
-		RNDIS_IPA_ERROR("fail to create is_vlan_mode file\n");
-		goto fail_file;
-	}
 
 	RNDIS_IPA_DEBUG("debugfs entries were created\n");
 	RNDIS_IPA_LOG_EXIT();

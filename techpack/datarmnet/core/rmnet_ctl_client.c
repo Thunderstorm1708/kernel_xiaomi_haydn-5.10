@@ -48,7 +48,7 @@ void rmnet_ctl_set_dbgfs(bool enable)
 				RMNET_CTL_LOG_NAME, NULL);
 
 		if (!IS_ERR_OR_NULL(ctl_ep.dbgfs_dir))
-			ctl_ep.dbgfs_loglvl = debugfs_create_u8(
+			debugfs_create_u8(
 				RMNET_CTL_LOG_LVL, 0644, ctl_ep.dbgfs_dir,
 				&ipc_log_lvl);
 
