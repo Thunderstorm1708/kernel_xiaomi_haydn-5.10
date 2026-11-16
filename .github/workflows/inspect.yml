@@ -34,7 +34,7 @@ jobs:
       - name: Extract images
         run: |
           unzip -o -q rom.zip payload.bin
-          ./tools/payload-dumper-go -o img -p boot,vendor_boot,dtbo,vendor_dlkm,vbmeta payload.bin
+          ./tools/payload-dumper-go -o img -p boot,vendor_boot,dtbo,vendor_dlkm,vbmeta,vendor payload.bin
           ls -la img
 
       - name: Inspect
@@ -68,6 +68,32 @@ jobs:
             p=$(find dlkm -name $f | head -1); [ -n "$p" ] && cp "$p" $R/dlkm_$f
           done
           for k in $(find dlkm vr -name '*.ko' | head -400); do echo "$(basename $k) $(modinfo -F vermagic $k 2>/dev/null)"; done | sort -u > $R/module_vermagic.txt
+          # vendor partition modules
+          mkdir vnd
+          if fsck.erofs --extract=vnd img/vendor.img > /dev/null 2>&1; then echo erofs > $R/vendor_fs.txt;
+          else debugfs -R "rdump /lib/modules vnd" img/vendor.img > /dev/null 2>&1; echo ext4 > $R/vendor_fs.txt; fi
+          VM=$(find vnd -type d -path '*lib/modules' | head -1)
+          echo "vendor modules dir: $VM" > $R/vendor_modules_list.txt
+          ls -la $VM >> $R/vendor_modules_list.txt 2>&1
+          for f in modules.load modules.dep modules.blocklist modules.softdep modules.options modules.alias; do
+            [ -f "$VM/$f" ] && cp "$VM/$f" $R/vendormod_$f.txt
+          done
+          for k in $VM/*.ko; do echo "$(basename $k) | $(modinfo -F vermagic $k 2>/dev/null)"; done > $R/vendor_module_vermagic.txt
+          # kernel: is module version checking / signing relaxed?
+          strings ub/kernel | grep -iE "disagrees about version|version magic|module verification failed|Loading of unsigned module|MODULE_FORCE" > $R/kernel_modcheck_strings.txt
+          python3 - <<'PY' > $R/ikconfig.txt 2>&1
+          import gzip
+          d=open('ub/kernel','rb').read()
+          i=d.find(b'IKCFG_ST')
+          print('IKCFG present' if i>=0 else 'no IKCONFIG')
+          if i>=0:
+              e=d.find(b'IKCFG_ED',i)
+              cfg=gzip.decompress(d[i+8:e]).decode()
+              open('report/zorix.config','w').write(cfg)
+              for l in cfg.splitlines():
+                  if any(k in l for k in ('MODVERSIONS','MODULE_SIG','MODULE_FORCE','QCA_CLD','SND_SOC_','MSM_DRM','DRM_MSM','LOCALVERSION','CONFIG_MODULES','TRIM_UNUSED')):
+                      print(l)
+          PY
           # dtbo / dtb
           python3 $T/mkdtboimg.py dump img/dtbo.img > $R/dtbo_dump.txt 2>&1 || true
           ls -la uv/dtb > $R/dtb_size.txt 2>&1 || true
@@ -84,7 +110,7 @@ jobs:
       - name: Print report
         run: |
           cd report
-          for f in *.txt ramdisk_* dlkm_*; do
+          for f in *.txt ramdisk_* dlkm_* zorix.config; do
             [ -f "$f" ] || continue
             echo "=================== $f"
             head -c 60000 "$f"
