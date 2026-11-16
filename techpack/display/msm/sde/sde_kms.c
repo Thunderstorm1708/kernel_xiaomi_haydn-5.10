@@ -790,6 +790,10 @@ static int _sde_kms_release_splash_buffer(unsigned int mem_addr,
 	pfn_start = mem_addr >> PAGE_SHIFT;
 	pfn_end = (mem_addr + splash_buffer_size) >> PAGE_SHIFT;
 
+	/* no-map carve-outs have no linear map; never hand them to the buddy */
+	if (!pfn_valid(PFN_DOWN(mem_addr)))
+		return 0;
+
 	ret = memblock_free(mem_addr, splash_buffer_size);
 	if (ret) {
 		SDE_ERROR("continuous splash memory free failed:%d\n", ret);

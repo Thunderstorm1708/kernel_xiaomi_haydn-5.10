@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
+#include <linux/memblock.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/kernel.h>
@@ -61,6 +62,9 @@ static void dsi_pll_free_bootmem(u32 mem_addr, u32 size)
 
 	pfn_start = mem_addr >> PAGE_SHIFT;
 	pfn_end = (mem_addr + size) >> PAGE_SHIFT;
+	/* no-map carve-outs have no linear map; never hand them to the buddy */
+	if (!pfn_valid(PFN_DOWN(mem_addr)))
+		return;
 	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
 		free_reserved_page(pfn_to_page(pfn_idx));
 }
