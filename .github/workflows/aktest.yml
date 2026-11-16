@@ -1,0 +1,86 @@
+name: AnyKernel3 vendor_boot test on the 5.4 ROM
+
+on:
+  push:
+    branches: [ rom-inspect ]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  aktest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ROM_URL: https://downloads.sourceforge.net/project/lucifer-alive/Infinity/vanilla/Project_Infinity-X-4.2-haydn-12.11.2026-VANILLA-UNOFFICIAL.zip
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static cpio lz4 unzip
+          mkdir -p tools; cd tools
+          curl -fsSL -o pd.tgz https://github.com/ssut/payload-dumper-go/releases/download/1.3.0/payload-dumper-go_1.3.0_linux_amd64.tar.gz
+          tar xzf pd.tgz
+          for f in unpack_bootimg.py; do
+            curl -fsSL "https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/heads/main/$f?format=TEXT" | base64 -d > $f
+          done
+
+      - name: Kernel zip (latest successful haydn-5.10 build)
+        run: |
+          id=$(gh run list -R $GITHUB_REPOSITORY -b haydn-5.10 -w "Build haydn 5.10 kernel" -s success -L 1 --json databaseId -q '.[0].databaseId')
+          echo "run $id"
+          gh run download $id -R $GITHUB_REPOSITORY -p 'haydn-5.10-anykernel3-*' -D zipdl
+          z=$(find zipdl -name '*.zip' | head -1); echo "$z"
+          mkdir ak; unzip -q "$z" -d ak; ls -la ak ak/tools; file ak/tools/magiskboot
+
+      - name: ROM images
+        run: |
+          curl -fL --retry 5 -o rom.zip "$ROM_URL"
+          unzip -o -q rom.zip payload.bin
+          ./tools/payload-dumper-go -o img -p boot,vendor_boot,dtbo payload.bin
+          ls -la img
+
+      - name: Emulate anykernel.sh (boot + vendor_boot)
+        run: |
+          set -ex
+          MB="qemu-aarch64-static $PWD/ak/tools/magiskboot"
+          AK=$PWD/ak
+          # ---- boot: swap kernel
+          mkdir b; cd b
+          $MB unpack -h ../img/boot.img
+          cp $AK/Image kernel
+          $MB repack ../img/boot.img ../boot-new.img
+          cd ..
+          # ---- vendor_boot: dtb + modules into the vendor ramdisk
+          mkdir v; cd v
+          $MB unpack -h ../img/vendor_boot.img
+          ls -la
+          comp=$($MB decompress ramdisk.cpio 2>&1 | sed -n 's;.*\[\(.*\)\];\1;p'); echo "ramdisk compression: $comp"
+          mv ramdisk.cpio ramdisk.cpio.$comp; $MB decompress ramdisk.cpio.$comp ramdisk.cpio
+          mkdir rd; (cd rd && cpio -idm --quiet < ../ramdisk.cpio)
+          mkdir -p rd/lib/modules; chmod 755 rd/lib rd/lib/modules
+          rm -f rd/lib/modules/*; cp $AK/vendor_modules/* rd/lib/modules/; chmod 644 rd/lib/modules/*
+          (cd rd && find . | cpio -o -H newc --quiet > ../ramdisk.cpio)
+          $MB compress=$comp ramdisk.cpio ramdisk.cpio.new; mv ramdisk.cpio.new ramdisk.cpio
+          cp $AK/dtb dtb
+          $MB repack ../img/vendor_boot.img ../vendor_boot-new.img
+          cd ..
+          ls -la img/*.img boot-new.img vendor_boot-new.img $AK/dtbo.img
+
+      - name: Verify
+        run: |
+          set -x
+          echo "boot partition 201326592, vendor_boot partition 100663296, dtbo partition 25165824"
+          stat -c '%n %s' boot-new.img vendor_boot-new.img ak/dtbo.img
+          python3 tools/unpack_bootimg.py --boot_img boot-new.img --out cb | head -8
+          python3 tools/unpack_bootimg.py --boot_img vendor_boot-new.img --out cv | head -12
+          cmp cb/kernel ak/Image && echo "boot kernel == zip Image"
+          cmp cv/dtb ak/dtb && echo "vendor_boot dtb == zip dtb"
+          mkdir chk; (cd chk && gzip -dc ../cv/vendor_ramdisk 2>/dev/null | cpio -idm --quiet || lz4 -dc ../cv/vendor_ramdisk | cpio -idm --quiet)
+          ls chk/lib/modules | wc -l
+          head -5 chk/lib/modules/modules.load; wc -l chk/lib/modules/modules.load chk/lib/modules/modules.load.recovery
+          ls chk/first_stage_ramdisk | head; diff <(cd chk && find . -path ./lib -prune -o -print | sort) <(mkdir o && cd o && gzip -dc ../v/ramdisk.cpio.gzip 2>/dev/null | cpio -idm --quiet; find . -path ./lib -prune -o -print | sort) && echo "rest of the vendor ramdisk unchanged"
+          strings cb/kernel | grep -m1 "Linux version"
