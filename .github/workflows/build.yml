@@ -52,11 +52,113 @@ jobs:
           cat $D/lahaina.dtb $D/lahaina-v2.dtb $D/lahaina-v2.1.dtb > dist/dtb 2>/dev/null || true
           curl -fsSL "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" | base64 -d > mkdtboimg.py || true
           [ -f $D/haydn-sm8350-overlay.dtbo ] && python3 mkdtboimg.py create dist/dtbo.img --page_size=4096 $D/haydn-sm8350-overlay.dtbo || true
-          make O=out INSTALL_MOD_PATH=$PWD/mods INSTALL_MOD_STRIP=1 modules_install 2>/dev/null || true
-          find mods -name '*.ko' -exec cp {} dist/ \; 2>/dev/null || true
           cp out/.config dist/config
           grep -E "error:|Error [0-9]" build.log | head -300 > dist/errors.txt || true
           ls -la dist
+
+      - name: Vendor_boot module set
+        run: |
+          make O=out INSTALL_MOD_PATH=$PWD/mods INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
+          KREL=$(cat out/include/config/kernel.release)
+          V=$PWD/dist/vendor_modules F=$PWD/flat/lib/modules/0.0
+          rm -rf "$V" flat; mkdir -p "$V" "$F"
+          find mods/lib/modules/$KREL -name '*.ko' -exec cp {} "$F"/ \;
+          dups=$(find mods/lib/modules/$KREL -name '*.ko' -printf '%f\n' | sort | uniq -d)
+          [ -z "$dups" ] || { echo "duplicate module names: $dups"; exit 1; }
+          depmod -b $PWD/flat 0.0
+          cp "$F"/*.ko "$V"/
+          # first stage init wants /lib/modules/ paths (as the AOSP build writes them)
+          sed -E 's#([^ :]+\.ko)#/lib/modules/\1#g' "$F"/modules.dep > "$V"/modules.dep
+          cp "$F"/modules.alias "$F"/modules.softdep "$V"/
+          # normal boot: every module, in kernel build order (deps come first anyway)
+          while read -r m; do b=$(basename "$m"); [ -f "$V/$b" ] && echo "$b"; done < out/modules.order | awk '!s[$0]++' > "$V"/modules.load
+          for k in "$V"/*.ko; do b=$(basename $k); grep -qx "$b" "$V"/modules.load || echo "$b" >> "$V"/modules.load; done
+          # recovery: haydn BOOT_KERNEL_MODULES
+          : > "$V"/modules.load.recovery
+          for b in adsp_loader_dlkm.ko apr_dlkm.ko focaltech_touch.ko hwid.ko mmhardware_sysfs_dlkm.ko \
+                   msm_drm.ko q6_notifier_dlkm.ko q6_pdr_dlkm.ko qti_battery_charger_main.ko \
+                   snd_event_dlkm.ko xiaomi_touch.ko; do
+            [ -f "$V/$b" ] || { echo "missing first stage module $b"; exit 1; }
+            echo $b >> "$V"/modules.load.recovery
+          done
+          echo "modules: $(wc -l < $V/modules.load), recovery: $(wc -l < $V/modules.load.recovery), size: $(du -sh $V | cut -f1)"
+
+      - name: AnyKernel3 zip
+        run: |
+          git clone -q https://github.com/osm0sis/AnyKernel3 ak3
+          git -C ak3 checkout -q 41f04bd
+          cd ak3
+          rm -rf .git .github README.md anykernel.sh modules patch ramdisk
+          cp ../dist/Image ../dist/dtb ../dist/dtbo.img .
+          cp -r ../dist/vendor_modules .
+          KREL=$(cat ../out/include/config/kernel.release)
+          cat > anykernel.sh <<'AKEOF'
+          ### AnyKernel3 Ramdisk Mod Script
+          ## osm0sis @ xda-developers
+
+          ### AnyKernel setup
+          properties() { '
+          kernel.string=haydn 5.10 kernel (msm-5.10 port) by Thunderstorm1708
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=haydn
+          device.name2=haydnin
+          device.name3=haydnpro
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; } # end properties
+
+          ### boot: kernel Image (dtbo.img is flashed by write_boot)
+          BLOCK=boot;
+          IS_SLOT_DEVICE=auto;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+          NO_BLOCK_DISPLAY=1;
+
+          . tools/ak3-core.sh;
+
+          dump_boot;
+          write_boot;
+
+          ### vendor_boot: dtb + 5.10 kernel modules in the vendor ramdisk
+          ## the ROM's msm-5.4 modules cannot load into a 5.10 kernel, so the
+          ## vendor ramdisk /lib/modules is replaced and first stage init loads
+          ## every 5.10 module (vendor_modprobe later skips the loaded ones)
+          BLOCK=vendor_boot;
+          IS_SLOT_DEVICE=auto;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+          NO_BLOCK_DISPLAY=1;
+
+          reset_ak;
+          dump_boot;
+
+          moddir=;
+          for d in $RAMDISK/lib/modules $VENDORRD/*/lib/modules; do
+            [ -d "$d" ] && { moddir=$d; break; };
+          done;
+          [ "$moddir" ] || abort "vendor ramdisk has no lib/modules. Aborting...";
+          ui_print " " "Installing 5.10 modules to vendor_boot...";
+          rm -f $moddir/*;
+          cp -f $AKHOME/vendor_modules/* $moddir/;
+          chmod 0644 $moddir/*;
+          ui_print "$(wc -l < $moddir/modules.load) modules";
+
+          write_boot;
+          AKEOF
+          sed -i 's/^          //' anykernel.sh
+          zip -r9 ../haydn-5.10-${KREL}-${{ github.run_number }}.zip . -x '.git*'
+          cd ..; unzip -l haydn-5.10-*.zip | tail -3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: haydn-5.10-anykernel3-${{ github.run_number }}
+          path: haydn-5.10-*.zip
+          compression-level: 0
 
       - uses: actions/upload-artifact@v4
         if: always()
