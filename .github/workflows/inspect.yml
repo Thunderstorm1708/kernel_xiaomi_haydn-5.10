@@ -81,6 +81,15 @@ jobs:
           ls -la $R
           true
 
+      - name: Print report
+        run: |
+          cd report
+          for f in *.txt ramdisk_* dlkm_*; do
+            [ -f "$f" ] || continue
+            echo "=================== $f"
+            head -c 60000 "$f"
+          done
+
       - name: Backup images
         run: |
           mkdir -p backup; cp img/boot.img img/vendor_boot.img img/dtbo.img backup/
