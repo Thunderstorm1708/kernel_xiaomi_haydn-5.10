@@ -8,6 +8,21 @@ And public attribution of xiaomi platforms(like venus and so and)
 #include "haydn-audio-overlay.dtsi"
 #include "camera/haydn-sm8350-camera-sensor.dtsi"
 
+/*
+ * pstore/ramoops for kernel and logcat logs across reboots (5.10 bring-up).
+ * Same carve-out as mainline sm8350 (sony sagami); free HLOS memory on lahaina.
+ */
+&reserved_memory {
+	ramoops@ffc00000 {
+		compatible = "ramoops";
+		reg = <0x0 0xffc00000 0x0 0x100000>;
+		console-size = <0x40000>;
+		pmsg-size = <0x40000>;
+		record-size = <0x1000>;
+		no-map;
+	};
+};
+
 &soc {
 	gpio_keys {
 		hall_key {
