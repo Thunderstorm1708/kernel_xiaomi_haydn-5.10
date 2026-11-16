@@ -2,7 +2,7 @@ name: Build haydn 5.10 kernel
 
 on:
   push:
-    branches: [ haydn-5.10 ]
+    branches: [ haydn-5.10-diag ]
   pull_request:
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ jobs:
       ARCH: arm64
       LLVM: 1
       LLVM_IAS: 1
-      KCONFIGS: gki_defconfig vendor/lahaina_GKI.config vendor/haydn_GKI.config
+      KCONFIGS: gki_defconfig vendor/lahaina_GKI.config vendor/haydn_GKI.config vendor/haydn_diag.config
       # device specific techpack bits (Xiaomi audio amps, camera sensors)
       TARGET_PRODUCT: haydn
     steps:
@@ -98,7 +98,7 @@ jobs:
 
           ### AnyKernel setup
           properties() { '
-          kernel.string=haydn 5.10 kernel (msm-5.10 port) by Thunderstorm1708
+          kernel.string=haydn 5.10 DIAGNOSTIC (on-screen kernel log) by Thunderstorm1708
           do.devicecheck=1
           do.modules=0
           do.systemless=0
@@ -158,7 +158,7 @@ jobs:
           write_boot;
           AKEOF
           sed -i 's/^          //' anykernel.sh
-          zip -r9 ../haydn-5.10-${KREL}-${{ github.run_number }}.zip . -x '.git*'
+          zip -r9 ../haydn-5.10-DIAG-${KREL}-${{ github.run_number }}.zip . -x '.git*'
           cd ..; unzip -l haydn-5.10-*.zip | tail -3
 
       - uses: actions/upload-artifact@v4

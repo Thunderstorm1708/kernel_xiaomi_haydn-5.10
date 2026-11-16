@@ -26,6 +26,26 @@ And public attribution of xiaomi platforms(like venus and so and)
 	};
 };
 
+/*
+ * DIAG: show the kernel console on the splash buffer the bootloader leaves
+ * scanning out (1080x2400). no-map so simplefb can ioremap it.
+ */
+&splash_memory {
+	no-map;
+};
+
+/ {
+	haydn_diag_fb: framebuffer@dfc00000 {
+		compatible = "simple-framebuffer";
+		reg = <0x0 0xdfc00000 0x0 0x2300000>;
+		width = <1080>;
+		height = <2400>;
+		stride = <(1080 * 4)>;
+		format = "a8r8g8b8";
+		status = "okay";
+	};
+};
+
 &soc {
 	gpio_keys {
 		hall_key {
