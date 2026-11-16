@@ -59,12 +59,14 @@ jobs:
           $MB unpack -h ../img/vendor_boot.img || [ $? = 3 ]
           ls -la
           comp=$($MB decompress ramdisk.cpio 2>&1 | sed -n 's;.*\[\(.*\)\];\1;p'); echo "ramdisk compression: $comp"
-          mv ramdisk.cpio ramdisk.cpio.$comp; $MB decompress ramdisk.cpio.$comp ramdisk.cpio
+          # magiskboot unpack already hands out a raw cpio (comp empty), like on device
+          if [ -n "$comp" ]; then mv ramdisk.cpio ramdisk.cpio.$comp; $MB decompress ramdisk.cpio.$comp ramdisk.cpio; fi
+          cp ramdisk.cpio ../orig-vendor-ramdisk.cpio
           mkdir rd; (cd rd && cpio -idm --quiet < ../ramdisk.cpio)
           mkdir -p rd/lib/modules; chmod 755 rd/lib rd/lib/modules
           rm -f rd/lib/modules/*; cp $AK/vendor_modules/* rd/lib/modules/; chmod 644 rd/lib/modules/*
           (cd rd && find . | cpio -o -H newc --quiet > ../ramdisk.cpio)
-          $MB compress=$comp ramdisk.cpio ramdisk.cpio.new; mv ramdisk.cpio.new ramdisk.cpio
+          if [ -n "$comp" ]; then $MB compress=$comp ramdisk.cpio ramdisk.cpio.new; mv ramdisk.cpio.new ramdisk.cpio; fi
           cp $AK/dtb dtb
           $MB repack ../img/vendor_boot.img ../vendor_boot-new.img
           cd ..
@@ -82,5 +84,5 @@ jobs:
           mkdir chk; (cd chk && gzip -dc ../cv/vendor_ramdisk 2>/dev/null | cpio -idm --quiet || lz4 -dc ../cv/vendor_ramdisk | cpio -idm --quiet)
           ls chk/lib/modules | wc -l
           head -5 chk/lib/modules/modules.load; wc -l chk/lib/modules/modules.load chk/lib/modules/modules.load.recovery
-          ls chk/first_stage_ramdisk | head; diff <(cd chk && find . -path ./lib -prune -o -print | sort) <(mkdir o && cd o && gzip -dc ../v/ramdisk.cpio.gzip 2>/dev/null | cpio -idm --quiet; find . -path ./lib -prune -o -print | sort) && echo "rest of the vendor ramdisk unchanged"
+          ls chk/first_stage_ramdisk | head; diff <(cd chk && find . -path ./lib -prune -o -print | sort) <(mkdir o && cd o && cpio -idm --quiet < ../orig-vendor-ramdisk.cpio; find . -path ./lib -prune -o -print | sort) && echo "rest of the vendor ramdisk unchanged"
           strings cb/kernel | grep -m1 "Linux version"
