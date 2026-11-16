@@ -113,7 +113,7 @@ static inline uint32_t qcom_sysmon_get_txn_id(struct qcom_sysmon *sysmon)
 	return 0;
 }
 
-int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len)
+static inline int qcom_sysmon_get_reason(struct qcom_sysmon *sysmon, char *buf, size_t len)
 { return -ENODEV; }
 #endif
 
