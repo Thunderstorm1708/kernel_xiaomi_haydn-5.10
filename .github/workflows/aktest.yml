@@ -56,7 +56,7 @@ jobs:
           cd ..
           # ---- vendor_boot: dtb + modules into the vendor ramdisk
           mkdir v; cd v
-          $MB unpack -h ../img/vendor_boot.img
+          $MB unpack -h ../img/vendor_boot.img || [ $? = 3 ]
           ls -la
           comp=$($MB decompress ramdisk.cpio 2>&1 | sed -n 's;.*\[\(.*\)\];\1;p'); echo "ramdisk compression: $comp"
           mv ramdisk.cpio ramdisk.cpio.$comp; $MB decompress ramdisk.cpio.$comp ramdisk.cpio
