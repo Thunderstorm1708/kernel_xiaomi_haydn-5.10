@@ -41,14 +41,20 @@ Outputs:
 
 | Area | State |
 | --- | --- |
-| Core kernel, lahaina SoC drivers | compiles |
+| Core kernel, lahaina SoC drivers (msm-5.10) | compiles |
 | DT: lahaina + haydn overlay | compiles, overlay applies on all three base dtbs |
 | Display (`techpack/display`, msm_drm + Xiaomi mi_disp) | compiles |
 | GPU (KGSL a660) | msm-5.10 driver |
-| ADSP boot (`techpack/audio`, stage 1: apr, adsp_loader, q6 notifier/pdr, snd_event, mmhardware_sysfs) | compiles |
-| Audio, full APR/ASoC stack (`HAYDN_AUDIO_STAGE=full`) | **to do** (ASoC 5.6+ component API, compress uapi, CLO ALSA core changes) |
-| Camera, video, IPA/rmnet, WLAN (qcacld) | **to do** |
+| Audio (`techpack/audio`, APR/ASoC, cs35l41 amps, MIUS ultrasound) | compiles |
+| Camera (`techpack/camera`), video (`techpack/video`) | compiles |
+| IPA / rmnet (`techpack/dataipa`, `datarmnet`, `datarmnet-ext`) | compiles |
+| WLAN (`drivers/staging/qcacld-3.0`, QCA6490) + cnss2 | compiles (`wlan.ko`) |
+| FBE (HWKM v1, wrappedkey_v0) | compiles |
 | Boot on device | **not tested yet** |
+
+Build with `TARGET_PRODUCT=haydn` (LineageOS passes it through
+`TARGET_KERNEL_ADDITIONAL_FLAGS`): the audio Kbuild picks the cs35l41 amps and
+the camera Makefile the haydn sensor config from it.
 
 ## Notable 5.10 compatibility changes
 
@@ -63,6 +69,17 @@ Outputs:
   `subsys-pil-tz` allocates the PAS metadata buffer itself, and cnss2's SSR ramdump
   path builds.
 * PDC: `qcom,lahaina-pdc` is matched.
+* TSENS: the msm `qcom,tsens24xx` driver is built (lahaina DT).
+* FBE: lahaina has no TME, so `drivers/soc/qcom/hwkm_v1` brings the msm-5.4 HWKM v1
+  backend (kernel programmed HWKM master, `qcom,hwkm` node) behind the msm-5.10
+  crypto-qti API (`CONFIG_QTI_HW_KEY_MANAGER_V1`).
+* ALSA/ASoC: `CONFIG_AUDIO_QGKI` carries the msm-5.4 core extensions, and ASoC
+  falls back to msm-5.4 style component callbacks (`.ops`, `.compr_ops`,
+  `.pcm_new`), so the APR techpack runs mostly unchanged. The msm-5.4 async DPCM ops
+  are not ported (BE ops run synchronously).
+* uapi kept at msm-5.4 values where the lahaina HALs depend on them: IPA
+  (`msm_ipa.h` and friends), rmnet flag bits, the video bitrate mode numbering
+  (`V4L2_MPEG_VIDEO_BITRATE_MODE_CQ_MSM`), DRM mode flags and QCOM modifiers.
 
 ## Device tree side (android_device_xiaomi_sm8350-common / haydn)
 
