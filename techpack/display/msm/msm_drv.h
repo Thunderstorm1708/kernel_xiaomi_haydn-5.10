@@ -1382,4 +1382,8 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 
 int msm_get_src_bpc(int chroma_format, int bpc);
 
+/* 5.10 drm_vblank only calls the per-CRTC vblank hooks for KMS drivers */
+int msm_enable_vblank(struct drm_device *dev, unsigned int pipe);
+void msm_disable_vblank(struct drm_device *dev, unsigned int pipe);
+
 #endif /* __MSM_DRV_H__ */
