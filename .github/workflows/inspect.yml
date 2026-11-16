@@ -1,0 +1,93 @@
+name: Inspect haydn 5.4 ROM
+
+on:
+  push:
+    branches: [ rom-inspect ]
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ROM_URL: https://downloads.sourceforge.net/project/lucifer-alive/Infinity/vanilla/Project_Infinity-X-4.2-haydn-12.11.2026-VANILLA-UNOFFICIAL.zip
+    steps:
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lz4 cpio erofs-utils e2fsprogs device-tree-compiler python3-protobuf zip unzip
+          mkdir -p tools; cd tools
+          curl -fsSL -o pd.tgz https://github.com/ssut/payload-dumper-go/releases/download/1.3.0/payload-dumper-go_1.3.0_linux_amd64.tar.gz
+          tar xzf pd.tgz
+          for f in unpack_bootimg.py mkbootimg.py gki/generate_gki_certificate.py; do
+            curl -fsSL "https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/heads/main/$f?format=TEXT" | base64 -d > $(basename $f)
+          done
+          mkdir -p gki; mv generate_gki_certificate.py gki/
+          curl -fsSL "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" | base64 -d > mkdtboimg.py
+          ls -la
+
+      - name: Download ROM
+        run: |
+          curl -fL --retry 5 -o rom.zip "$ROM_URL"
+          ls -la rom.zip; unzip -l rom.zip | head -30
+
+      - name: Extract images
+        run: |
+          unzip -o -q rom.zip payload.bin
+          ./tools/payload-dumper-go -o img -p boot,vendor_boot,dtbo,vendor_dlkm,vbmeta payload.bin
+          ls -la img
+
+      - name: Inspect
+        run: |
+          set -x
+          R=report; mkdir -p $R
+          T=$PWD/tools
+          python3 $T/unpack_bootimg.py --boot_img img/boot.img --out ub > $R/boot_hdr.txt 2>&1 || true
+          python3 $T/unpack_bootimg.py --boot_img img/vendor_boot.img --out uv > $R/vendor_boot_hdr.txt 2>&1 || true
+          python3 $T/unpack_bootimg.py --boot_img img/vendor_boot.img --out uv --format=mkbootimg > $R/vendor_boot_mkbootimg_args.txt 2>&1 || true
+          ls -la ub uv > $R/unpacked_files.txt
+          # 5.4 kernel version + config
+          strings ub/kernel | grep -m3 "Linux version" > $R/kernel_version.txt || true
+          # vendor ramdisk
+          mkdir vr; for r in uv/vendor_ramdisk*; do
+            lz4 -dc "$r" > vr.cpio 2>/dev/null || gzip -dc "$r" > vr.cpio || cp "$r" vr.cpio
+            (cd vr && cpio -idm --quiet < ../vr.cpio); file "$r" >> $R/vendor_ramdisk_compression.txt
+          done
+          (cd vr && find . | sort) > $R/vendor_ramdisk_tree.txt
+          for f in modules.load modules.load.recovery modules.dep modules.alias modules.softdep modules.blocklist modules.options; do
+            [ -f vr/lib/modules/$f ] && cp vr/lib/modules/$f $R/ramdisk_$f
+          done
+          du -sb uv/* vr/lib/modules > $R/sizes.txt
+          # vendor_dlkm
+          mkdir dlkm
+          if fsck.erofs --extract=dlkm img/vendor_dlkm.img > /dev/null 2>&1; then echo erofs > $R/vendor_dlkm_fs.txt;
+          else debugfs -R "rdump / dlkm" img/vendor_dlkm.img > /dev/null 2>&1; echo ext4 > $R/vendor_dlkm_fs.txt; fi
+          (cd dlkm && find . | sort) > $R/vendor_dlkm_tree.txt
+          for f in modules.load modules.dep modules.blocklist modules.softdep modules.options; do
+            p=$(find dlkm -name $f | head -1); [ -n "$p" ] && cp "$p" $R/dlkm_$f
+          done
+          for k in $(find dlkm vr -name '*.ko' | head -400); do echo "$(basename $k) $(modinfo -F vermagic $k 2>/dev/null)"; done | sort -u > $R/module_vermagic.txt
+          # dtbo / dtb
+          python3 $T/mkdtboimg.py dump img/dtbo.img > $R/dtbo_dump.txt 2>&1 || true
+          ls -la uv/dtb > $R/dtb_size.txt 2>&1 || true
+          # vbmeta flags
+          python3 - <<'PY' > $R/vbmeta.txt
+          import struct
+          d=open('img/vbmeta.img','rb').read()
+          print('magic', d[:4], 'flags', struct.unpack('>I', d[120:124])[0])
+          PY
+          cp ub/kernel $R/Image-5.4 2>/dev/null || true
+          ls -la $R
+
+      - name: Backup images
+        run: |
+          mkdir -p backup; cp img/boot.img img/vendor_boot.img img/dtbo.img backup/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rom-report
+          path: report/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rom-stock-boot-images
+          path: backup/
