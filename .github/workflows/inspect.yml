@@ -80,6 +80,12 @@ jobs:
             [ -f "$VM/$f" ] && cp "$VM/$f" $R/vendormod_$f.txt
           done
           for k in $VM/*.ko; do echo "$(basename $k) | $(modinfo -F vermagic $k 2>/dev/null)"; done > $R/vendor_module_vermagic.txt
+          { file img/vendor.img; debugfs -R "ls -l /lib" img/vendor.img; debugfs -R "stat /lib/modules" img/vendor.img; } > $R/vendor_lib_debug.txt 2>&1
+          mkdir vall; debugfs -R "rdump / vall" img/vendor.img > /dev/null 2>&1
+          find vall -name '*.ko' > $R/vendor_all_ko.txt
+          find vall -name 'modules.load*' >> $R/vendor_all_ko.txt
+          ls -la vall/lib 2>&1 | head -40 >> $R/vendor_lib_debug.txt
+          find vr dlkm vall -name '*.ko' | wc -l >> $R/vendor_all_ko.txt
           # kernel: is module version checking / signing relaxed?
           strings ub/kernel | grep -iE "disagrees about version|version magic|module verification failed|Loading of unsigned module|MODULE_FORCE" > $R/kernel_modcheck_strings.txt
           python3 - <<'PY' > $R/ikconfig.txt 2>&1
