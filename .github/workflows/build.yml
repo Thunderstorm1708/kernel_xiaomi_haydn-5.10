@@ -127,7 +127,8 @@ jobs:
           ### vendor_boot: dtb + 5.10 kernel modules in the vendor ramdisk
           ## the ROM's msm-5.4 modules cannot load into a 5.10 kernel, so the
           ## vendor ramdisk /lib/modules is replaced and first stage init loads
-          ## every 5.10 module (vendor_modprobe later skips the loaded ones)
+          ## every 5.10 module (vendor_modprobe later skips the loaded ones and
+          ## the kernel rejects any msm-5.4 module it still tries)
           BLOCK=vendor_boot;
           IS_SLOT_DEVICE=auto;
           RAMDISK_COMPRESSION=auto;
@@ -141,7 +142,13 @@ jobs:
           for d in $RAMDISK/lib/modules $VENDORRD/*/lib/modules; do
             [ -d "$d" ] && { moddir=$d; break; };
           done;
-          [ "$moddir" ] || abort "vendor ramdisk has no lib/modules. Aborting...";
+          # ROMs with a monolithic 5.4 kernel ship no lib/modules here: create it
+          if [ ! "$moddir" ]; then
+            [ -d $RAMDISK ] || abort "vendor ramdisk was not unpacked. Aborting...";
+            moddir=$RAMDISK/lib/modules;
+            mkdir -p $moddir;
+            chmod 0755 $RAMDISK/lib $moddir;
+          fi;
           ui_print " " "Installing 5.10 modules to vendor_boot...";
           rm -f $moddir/*;
           cp -f $AKHOME/vendor_modules/* $moddir/;
