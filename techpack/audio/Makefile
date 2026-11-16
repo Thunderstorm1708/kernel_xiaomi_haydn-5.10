@@ -20,10 +20,10 @@ include $(srctree)/techpack/audio/config/konaauto.conf
 endif
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
 # HAYDN_AUDIO_STAGE=boot builds only the ADSP boot/supervision modules
-ifeq ($(HAYDN_AUDIO_STAGE),full)
-include $(srctree)/techpack/audio/config/lahainaauto.conf
-else
+ifeq ($(HAYDN_AUDIO_STAGE),boot)
 include $(srctree)/techpack/audio/config/lahainaauto_boot.conf
+else
+include $(srctree)/techpack/audio/config/lahainaauto.conf
 endif
 endif
 ifeq ($(CONFIG_ARCH_HOLI), y)
@@ -45,6 +45,7 @@ USERINCLUDE     += \
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
+LINUXINCLUDE    += -include $(srctree)/techpack/audio/include/compat510_audio.h
 LINUXINCLUDE    += \
                 -I$(srctree)/techpack/audio/include/uapi \
                 -I$(srctree)/techpack/audio/include/uapi/audio \
@@ -102,3 +103,6 @@ obj-y += soc/
 obj-y += dsp/
 obj-y += ipc/
 obj-y += asoc/
+
+# clang 18: msm-5.4 code as is (behaviour unchanged)
+subdir-ccflags-y += -Wno-tautological-pointer-compare -Wno-tautological-overlap-compare

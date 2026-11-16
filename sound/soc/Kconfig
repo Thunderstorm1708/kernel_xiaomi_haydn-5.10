@@ -40,6 +40,13 @@ config SND_SOC_TOPOLOGY
 config SND_SOC_ACPI
 	tristate
 
+config AUDIO_QGKI
+	bool "Audio QGKI support"
+	help
+	  msm-5.4 (QGKI) ALSA core extensions used by the lahaina APR audio
+	  techpack: async DPCM ops, dynamic BE links, SSR card state, compress
+	  metadata/timestamps.
+
 # All the supported SoCs
 source "sound/soc/adi/Kconfig"
 source "sound/soc/amd/Kconfig"

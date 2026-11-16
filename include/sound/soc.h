@@ -20,6 +20,9 @@
 #include <linux/regmap.h>
 #include <linux/log2.h>
 #include <linux/android_kabi.h>
+#ifdef CONFIG_AUDIO_QGKI
+#include <linux/async.h>
+#endif
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/compress_driver.h>
@@ -539,6 +542,11 @@ static inline void snd_soc_jack_free_gpios(struct snd_soc_jack *jack, int count,
 }
 #endif
 
+#ifdef CONFIG_AUDIO_QGKI
+void snd_soc_card_change_online_state(struct snd_soc_card *soc_card,
+				int online);
+#endif
+
 struct snd_ac97 *snd_soc_alloc_ac97_component(struct snd_soc_component *component);
 struct snd_ac97 *snd_soc_new_ac97_component(struct snd_soc_component *component,
 	unsigned int id, unsigned int id_mask);
@@ -708,6 +716,10 @@ struct snd_soc_jack {
 	struct list_head jack_zones;
 };
 
+/* DAI Link Host Mode Support (msm-5.4) */
+#define SND_SOC_DAI_LINK_NO_HOST		0x1
+#define SND_SOC_DAI_LINK_OPT_HOST		0x2
+
 /* SoC PCM stream information */
 struct snd_soc_pcm_stream {
 	const char *stream_name;
@@ -718,6 +730,7 @@ struct snd_soc_pcm_stream {
 	unsigned int channels_min;	/* min channels */
 	unsigned int channels_max;	/* max channels */
 	unsigned int sig_bits;		/* number of bits of content */
+	const char *aif_name;		/* DAPM AIF widget name (android11-5.4) */
 };
 
 /* SoC audio ops */
@@ -746,6 +759,16 @@ struct snd_soc_dai_link_component {
 	struct device_node *of_node;
 	const char *dai_name;
 };
+
+#ifdef CONFIG_AUDIO_QGKI
+enum snd_soc_async_ops {
+	ASYNC_DPCM_SND_SOC_OPEN = 1 << 0,
+	ASYNC_DPCM_SND_SOC_CLOSE = 1 << 1,
+	ASYNC_DPCM_SND_SOC_PREPARE = 1 << 2,
+	ASYNC_DPCM_SND_SOC_HW_PARAMS = 1 << 3,
+	ASYNC_DPCM_SND_SOC_FREE = 1 << 4,
+};
+#endif
 
 struct snd_soc_dai_link {
 	/* config - must be set by machine driver */
@@ -827,6 +850,17 @@ struct snd_soc_dai_link {
 	/* This DAI link can route to other DAI links at runtime (Frontend)*/
 	unsigned int dynamic:1;
 
+#ifdef CONFIG_AUDIO_QGKI
+	/* This DAI link can be reconfigured at runtime (Backend) */
+	unsigned int dynamic_be:1;
+#endif
+
+	/*
+	 * This DAI can support no host IO (no pcm data is
+	 * copied to from host)
+	 */
+	unsigned int no_host_mode:2;
+
 	/* DPCM capture and Playback support */
 	unsigned int dpcm_capture:1;
 	unsigned int dpcm_playback:1;
@@ -849,6 +883,11 @@ struct snd_soc_dai_link {
 #endif
 
 	ANDROID_KABI_RESERVE(1);
+
+#ifdef CONFIG_AUDIO_QGKI
+	/* this value determines what all ops can be started asynchronously */
+	enum snd_soc_async_ops async_ops;
+#endif
 };
 #define for_each_link_codecs(link, i, codec)				\
 	for ((i) = 0;							\
@@ -1149,7 +1188,10 @@ struct snd_soc_pcm_runtime {
 	struct snd_soc_dpcm_runtime dpcm[2];
 
 	long pmdown_time;
-
+#ifdef CONFIG_AUDIO_QGKI
+	/* err in case of ops failed */
+	int err_ops;
+#endif
 	/* runtime devices */
 	struct snd_pcm *pcm;
 	struct snd_compr *compr;

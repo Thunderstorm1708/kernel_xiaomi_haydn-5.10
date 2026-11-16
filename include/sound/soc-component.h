@@ -151,6 +151,25 @@ struct snd_soc_component_driver {
 
 	const struct snd_compress_ops *compress_ops;
 
+	/*
+	 * msm-5.4 (android11-5.4) style callbacks, used by the lahaina APR
+	 * audio techpack. When a 5.10 callback above is not set, ASoC falls
+	 * back to these (see soc-component.c / soc-compress.c).
+	 */
+	const struct snd_pcm_ops *ops;
+	const struct snd_compr_ops *compr_ops;
+	int (*pcm_new)(struct snd_soc_pcm_runtime *rtd);
+	void (*pcm_free)(struct snd_pcm *pcm);
+#ifdef CONFIG_AUDIO_QGKI
+	/*
+	 * Platform-caused delay reporting where the thread blocks waiting for
+	 * the delay amount; when set, the per-component delay callbacks are
+	 * skipped.
+	 */
+	snd_pcm_sframes_t (*delay_blk)(struct snd_pcm_substream *substream,
+			struct snd_soc_dai *dai);
+#endif
+
 	/* probe ordering - for components with runtime dependencies */
 	int probe_order;
 	int remove_order;
