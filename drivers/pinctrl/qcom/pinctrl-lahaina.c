@@ -113,6 +113,16 @@
 		.wake_reg = 0,	\
 		.wake_bit = -1,		\
 	}
+#define QUP_I3C(qup_mode, qup_offset)			\
+	{						\
+		.mode = qup_mode,			\
+		.offset = qup_offset,			\
+	}
+
+#define QUP_I3C_8_MODE_OFFSET	0xE6000
+#define QUP_I3C_14_MODE_OFFSET	0xE7000
+#define QUP_I3C_15_MODE_OFFSET	0xE8000
+
 static const struct pinctrl_pin_desc lahaina_pins[] = {
 	PINCTRL_PIN(0, "GPIO_0"),
 	PINCTRL_PIN(1, "GPIO_1"),
@@ -1275,7 +1285,7 @@ static const char * const qup5_groups[] = {
 	"gpio24", "gpio25", "gpio26", "gpio27",
 };
 static const char * const qup6_groups[] = {
-	"gpio28", "gpio29", "gpio30", "gpio31",
+	"gpio28", "gpio29", "gpio30", "gpio31", "gpio6",
 };
 static const char * const qup7_groups[] = {
 	"gpio32", "gpio33", "gpio34", "gpio35",
@@ -1598,7 +1608,7 @@ static const struct msm_pingroup lahaina_groups[] = {
 	[3] = PINGROUP(3, qup13, qup_l5, NA, NA, NA, NA, NA, NA, NA, 0, -1),
 	[4] = PINGROUP(4, qup0, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
 	[5] = PINGROUP(5, qup0, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
-	[6] = PINGROUP(6, qup0, qup_l4, NA, NA, NA, NA, NA, NA, NA, 0, -1),
+	[6] = PINGROUP(6, qup0, qup6, NA, NA, NA, NA, NA, NA, NA, 0, -1),
 	[7] = PINGROUP(7, qup0, qup_l5, NA, NA, NA, NA, NA, NA, NA, 0xCB000, 0),
 	[8] = PINGROUP(8, qup1, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
 	[9] = PINGROUP(9, qup1, NA, NA, NA, NA, NA, NA, NA, NA, 0, -1),
@@ -1930,6 +1940,12 @@ static const int lahaina_reserved_gpios[] = {
 	52, 53, 54, 55, 56, 57, 58, 59, -1
 };
 
+static struct pinctrl_qup lahaina_qup_regs[] = {
+	QUP_I3C(8, QUP_I3C_8_MODE_OFFSET),
+	QUP_I3C(14, QUP_I3C_14_MODE_OFFSET),
+	QUP_I3C(15, QUP_I3C_15_MODE_OFFSET),
+};
+
 static const struct msm_gpio_wakeirq_map lahaina_pdc_map[] = {
 	{ 2, 117 }, { 7, 82 }, { 11, 83 }, { 14, 80 }, { 15, 146 },
 	{ 19, 121 }, { 23, 84 }, { 26, 86 }, { 27, 75 }, { 31, 85 },
@@ -1944,7 +1960,7 @@ static const struct msm_gpio_wakeirq_map lahaina_pdc_map[] = {
 	{ 116, 106 }, { 117, 105 }, { 118, 116 }, { 119, 123 }, { 130, 145 },
 	{ 136, 72 }, { 140, 100 }, { 151, 110 }, { 153, 95 }, { 155, 107 },
 	{ 156, 94 }, { 157, 111 }, { 159, 118 }, { 162, 77 }, { 165, 78 },
-	{ 169, 70 }, { 172, 132 }, { 174, 87 }, { 175, 88 }, { 177, 89 },
+	{ 169, 130 }, { 172, 132 }, { 174, 87 }, { 175, 88 }, { 177, 89 },
 	{ 179, 120 }, { 180, 129 }, { 183, 90 }, { 185, 136 }, { 187, 142 },
 	{ 190, 144 }, { 198, 91 }, { 200, 133 }, { 202, 135 },
 };
@@ -1960,11 +1976,35 @@ static const struct msm_pinctrl_soc_data lahaina_pinctrl = {
 	.ngpios = 204,
 	.wakeirq_map = lahaina_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(lahaina_pdc_map),
+	.qup_regs = lahaina_qup_regs,
+	.nqup_regs = ARRAY_SIZE(lahaina_qup_regs),
 };
+
+/* By default, all the gpios that are mpm wake capable are enabled.
+ * The following list disables the gpios explicitly
+ */
+static const unsigned int config_mpm_wake_disable_gpios[] = { 151, 202 };
+
+static void lahaina_pinctrl_config_mpm_wake_disable_gpios(void)
+{
+	unsigned int i;
+	unsigned int n_gpios = ARRAY_SIZE(config_mpm_wake_disable_gpios);
+
+	for (i = 0; i < n_gpios; i++)
+		msm_gpio_mpm_wake_set(config_mpm_wake_disable_gpios[i], false);
+}
 
 static int lahaina_pinctrl_probe(struct platform_device *pdev)
 {
-	return msm_pinctrl_probe(pdev, &lahaina_pinctrl);
+	int ret;
+
+	ret = msm_pinctrl_probe(pdev, &lahaina_pinctrl);
+	if (ret)
+		return ret;
+
+	lahaina_pinctrl_config_mpm_wake_disable_gpios();
+
+	return 0;
 }
 
 static const struct of_device_id lahaina_pinctrl_of_match[] = {
