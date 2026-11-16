@@ -51,14 +51,11 @@ int iio_trigger_buffer_setup(struct iio_dev *indio_dev,
         irqreturn_t (*thread)(int irq, void *p),
         const struct iio_buffer_setup_ops *setup_ops);
 void iio_trigger_buffer_cleanup(struct iio_dev *indio_dev);
-int iio_triggered_buffer_postenable(struct iio_dev *indio_dev);
-int iio_triggered_buffer_predisable(struct iio_dev *indio_dev);
 void iio_dealloc_pollfunc(struct iio_poll_func *pf);
 
 
+/* 5.10: the IIO core attaches/detaches the trigger poll function itself */
 static const struct iio_buffer_setup_ops iio_trigger_buffer_setup_ops = {
-    .postenable = &iio_triggered_buffer_postenable,
-    .predisable = &iio_triggered_buffer_predisable,
 };
 
 static struct us_prox_data *g_us_prox;
