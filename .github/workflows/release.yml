@@ -1,14 +1,9 @@
 name: Publish test zip as a release
 
 on:
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: haydn-5.10 build run id
-        required: true
-      tag:
-        description: release tag
-        required: true
+  push:
+    branches: [ rom-inspect ]
+    paths: [ .github/workflows/release.yml ]
 
 permissions:
   actions: read
@@ -19,12 +14,14 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
+      RUN_ID: "43849541603"
+      TAG: test-1
     steps:
       - name: Fetch zip and publish
         run: |
-          gh run download ${{ inputs.run_id }} -R $GITHUB_REPOSITORY -p 'haydn-5.10-anykernel3-*' -D dl
+          gh run download $RUN_ID -R $GITHUB_REPOSITORY -p 'haydn-5.10-anykernel3-*' -D dl
           z=$(find dl -name '*.zip' | head -1); ls -la "$z"; sha256sum "$z" | tee sha256.txt
-          gh release create "${{ inputs.tag }}" "$z" sha256.txt -R $GITHUB_REPOSITORY \
+          gh release create "$TAG" "$z" sha256.txt -R $GITHUB_REPOSITORY \
             --target haydn-5.10 --prerelease \
-            --title "haydn 5.10 test build (${{ inputs.tag }})" \
-            --notes "Untested bring-up build from run ${{ inputs.run_id }}. Back up boot, vendor_boot and dtbo before flashing."
+            --title "haydn 5.10 test build ($TAG)" \
+            --notes "Untested bring-up build from run $RUN_ID. Back up boot, vendor_boot and dtbo before flashing."
