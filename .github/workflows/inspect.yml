@@ -39,7 +39,7 @@ jobs:
 
       - name: Inspect
         run: |
-          set -x
+          set +e
           R=report; mkdir -p $R
           T=$PWD/tools
           python3 $T/unpack_bootimg.py --boot_img img/boot.img --out ub > $R/boot_hdr.txt 2>&1 || true
@@ -57,7 +57,8 @@ jobs:
           for f in modules.load modules.load.recovery modules.dep modules.alias modules.softdep modules.blocklist modules.options; do
             [ -f vr/lib/modules/$f ] && cp vr/lib/modules/$f $R/ramdisk_$f
           done
-          du -sb uv/* vr/lib/modules > $R/sizes.txt
+          du -sb uv/* vr/lib/modules > $R/sizes.txt 2>&1
+          head -c 64 uv/vendor_ramdisk | xxd > $R/vendor_ramdisk_head.txt
           # vendor_dlkm
           mkdir dlkm
           if fsck.erofs --extract=dlkm img/vendor_dlkm.img > /dev/null 2>&1; then echo erofs > $R/vendor_dlkm_fs.txt;
@@ -78,6 +79,7 @@ jobs:
           PY
           cp ub/kernel $R/Image-5.4 2>/dev/null || true
           ls -la $R
+          true
 
       - name: Backup images
         run: |
