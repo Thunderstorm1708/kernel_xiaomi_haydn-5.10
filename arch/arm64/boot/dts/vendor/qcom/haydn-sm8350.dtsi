@@ -34,7 +34,7 @@ And public attribution of xiaomi platforms(like venus and so and)
 	no-map;
 };
 
-/ {
+&{/} {
 	haydn_diag_fb: framebuffer@dfc00000 {
 		compatible = "simple-framebuffer";
 		reg = <0x0 0xdfc00000 0x0 0x2300000>;
