@@ -72,7 +72,8 @@ jobs:
           mkdir vnd
           if fsck.erofs --extract=vnd img/vendor.img > /dev/null 2>&1; then echo erofs > $R/vendor_fs.txt;
           else debugfs -R "rdump /lib/modules vnd" img/vendor.img > /dev/null 2>&1; echo ext4 > $R/vendor_fs.txt; fi
-          VM=$(find vnd -type d -path '*lib/modules' | head -1)
+          VM=$(dirname "$(find vnd -name '*.ko' | head -1)" 2>/dev/null)
+          [ -n "$VM" ] || VM=$(find vnd -maxdepth 3 -type d -name modules | head -1)
           echo "vendor modules dir: $VM" > $R/vendor_modules_list.txt
           ls -la $VM >> $R/vendor_modules_list.txt 2>&1
           for f in modules.load modules.dep modules.blocklist modules.softdep modules.options modules.alias; do
