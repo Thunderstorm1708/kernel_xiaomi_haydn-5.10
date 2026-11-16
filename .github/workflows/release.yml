@@ -1,4 +1,4 @@
-name: Publish test zip as a release
+name: Publish stock 5.4 boot images as a release
 
 on:
   push:
@@ -14,14 +14,15 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_ID: "43849541603"
-      TAG: test-1
+      RUN_ID: "43820884861"
+      TAG: stock-5.4-boot
     steps:
-      - name: Fetch zip and publish
+      - name: Fetch images and publish
         run: |
-          gh run download $RUN_ID -R $GITHUB_REPOSITORY -p 'haydn-5.10-anykernel3-*' -D dl
-          z=$(find dl -name '*.zip' | head -1); ls -la "$z"; sha256sum "$z" | tee sha256.txt
-          gh release create "$TAG" "$z" sha256.txt -R $GITHUB_REPOSITORY \
-            --target haydn-5.10 --prerelease \
-            --title "haydn 5.10 test build ($TAG)" \
-            --notes "Untested bring-up build from run $RUN_ID. Back up boot, vendor_boot and dtbo before flashing."
+          gh run download $RUN_ID -R $GITHUB_REPOSITORY -n rom-stock-boot-images -D img
+          ls -la img
+          (cd img && sha256sum boot.img vendor_boot.img dtbo.img) | tee sha256.txt
+          gh release create "$TAG" img/boot.img img/vendor_boot.img img/dtbo.img sha256.txt \
+            -R $GITHUB_REPOSITORY --target haydn-5.10 --prerelease \
+            --title "Stock 5.4 boot images (Infinity-X 4.2, 12.11.2026)" \
+            --notes "Restore images for going back to the ROM's 5.4 kernel: fastboot flash boot boot.img; fastboot flash vendor_boot vendor_boot.img; fastboot flash dtbo dtbo.img; fastboot reboot"
