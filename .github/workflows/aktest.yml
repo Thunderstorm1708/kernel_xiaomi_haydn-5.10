@@ -34,7 +34,7 @@ jobs:
           echo "run $id"
           gh run download $id -R $GITHUB_REPOSITORY -p 'haydn-5.10-anykernel3-*' -D zipdl
           z=$(find zipdl -name '*.zip' | head -1); echo "$z"
-          mkdir ak; unzip -q "$z" -d ak; ls -la ak ak/tools; file ak/tools/magiskboot
+          mkdir ak; unzip -q "$z" -d ak; ls -la ak ak/tools; file ak/tools/magiskboot ak/tools/busybox
 
       - name: ROM images
         run: |
@@ -46,7 +46,7 @@ jobs:
       - name: Emulate anykernel.sh (boot + vendor_boot)
         run: |
           set -ex
-          MB="qemu-aarch64-static $PWD/ak/tools/magiskboot"
+          MB="qemu-arm-static $PWD/ak/tools/magiskboot"
           AK=$PWD/ak
           # ---- boot: swap kernel
           mkdir b; cd b
