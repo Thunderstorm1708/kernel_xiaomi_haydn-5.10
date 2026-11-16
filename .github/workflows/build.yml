@@ -60,7 +60,9 @@ jobs:
           make O=out CC="ccache clang" HOSTCC="ccache clang" $KCONFIGS
 
       - name: Build Image, modules and dtbs
-        run: make O=out CC="ccache clang" HOSTCC="ccache clang" -j$(nproc --all) Image modules dtbs 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          make O=out CC="ccache clang" HOSTCC="ccache clang" -j$(nproc --all) Image modules dtbs 2>&1 | tee build.log
 
       - name: Save compiler cache
         if: always()
