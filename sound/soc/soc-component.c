@@ -275,6 +275,8 @@ int snd_soc_component_open(struct snd_soc_component *component,
 
 	if (component->driver->open)
 		ret = component->driver->open(component, substream);
+	else if (component->driver->ops && component->driver->ops->open)
+		ret = component->driver->ops->open(substream);
 
 	/* mark substream if succeeded */
 	if (ret == 0)
@@ -294,6 +296,8 @@ int snd_soc_component_close(struct snd_soc_component *component,
 
 	if (component->driver->close)
 		ret = component->driver->close(component, substream);
+	else if (component->driver->ops && component->driver->ops->close)
+		ret = component->driver->ops->close(substream);
 
 	/* remove marked substream */
 	soc_component_mark_pop(component, substream, open);
@@ -623,6 +627,9 @@ int snd_soc_pcm_component_pointer(struct snd_pcm_substream *substream)
 	for_each_rtd_components(rtd, i, component)
 		if (component->driver->pointer)
 			return component->driver->pointer(component, substream);
+		else if (component->driver->ops &&
+			 component->driver->ops->pointer)
+			return component->driver->ops->pointer(substream);
 
 	return 0;
 }
@@ -641,6 +648,11 @@ int snd_soc_pcm_component_ioctl(struct snd_pcm_substream *substream,
 				component,
 				component->driver->ioctl(component,
 							 substream, cmd, arg));
+		else if (component->driver->ops &&
+			 component->driver->ops->ioctl)
+			return soc_component_ret(component,
+				component->driver->ops->ioctl(substream,
+							      cmd, arg));
 
 	return snd_pcm_lib_ioctl(substream, cmd, arg);
 }
@@ -679,6 +691,11 @@ int snd_soc_pcm_component_copy_user(struct snd_pcm_substream *substream,
 				component->driver->copy_user(
 					component, substream, channel,
 					pos, buf, bytes));
+		else if (component->driver->ops &&
+			 component->driver->ops->copy_user)
+			return soc_component_ret(component,
+				component->driver->ops->copy_user(substream,
+					channel, pos, buf, bytes));
 
 	return -EINVAL;
 }
@@ -696,6 +713,11 @@ struct page *snd_soc_pcm_component_page(struct snd_pcm_substream *substream,
 		if (component->driver->page) {
 			page = component->driver->page(component,
 						       substream, offset);
+			if (page)
+				return page;
+		} else if (component->driver->ops &&
+			   component->driver->ops->page) {
+			page = component->driver->ops->page(substream, offset);
 			if (page)
 				return page;
 		}
@@ -718,6 +740,10 @@ int snd_soc_pcm_component_mmap(struct snd_pcm_substream *substream,
 				component,
 				component->driver->mmap(component,
 							substream, vma));
+		else if (component->driver->ops &&
+			 component->driver->ops->mmap)
+			return soc_component_ret(component,
+				component->driver->ops->mmap(substream, vma));
 
 	return -EINVAL;
 }
@@ -731,6 +757,10 @@ int snd_soc_pcm_component_new(struct snd_soc_pcm_runtime *rtd)
 	for_each_rtd_components(rtd, i, component) {
 		if (component->driver->pcm_construct) {
 			ret = component->driver->pcm_construct(component, rtd);
+			if (ret < 0)
+				return soc_component_ret(component, ret);
+		} else if (component->driver->pcm_new) {
+			ret = component->driver->pcm_new(rtd);
 			if (ret < 0)
 				return soc_component_ret(component, ret);
 		}
@@ -750,6 +780,8 @@ void snd_soc_pcm_component_free(struct snd_soc_pcm_runtime *rtd)
 	for_each_rtd_components(rtd, i, component)
 		if (component->driver->pcm_destruct)
 			component->driver->pcm_destruct(component, rtd->pcm);
+		else if (component->driver->pcm_free)
+			component->driver->pcm_free(rtd->pcm);
 }
 
 int snd_soc_pcm_component_prepare(struct snd_pcm_substream *substream)
@@ -761,6 +793,11 @@ int snd_soc_pcm_component_prepare(struct snd_pcm_substream *substream)
 	for_each_rtd_components(rtd, i, component) {
 		if (component->driver->prepare) {
 			ret = component->driver->prepare(component, substream);
+			if (ret < 0)
+				return soc_component_ret(component, ret);
+		} else if (component->driver->ops &&
+			   component->driver->ops->prepare) {
+			ret = component->driver->ops->prepare(substream);
 			if (ret < 0)
 				return soc_component_ret(component, ret);
 		}
@@ -781,6 +818,14 @@ int snd_soc_pcm_component_hw_params(struct snd_pcm_substream *substream,
 		if (component->driver->hw_params) {
 			ret = component->driver->hw_params(component,
 							   substream, params);
+			if (ret < 0) {
+				*last = component;
+				return soc_component_ret(component, ret);
+			}
+		} else if (component->driver->ops &&
+			   component->driver->ops->hw_params) {
+			ret = component->driver->ops->hw_params(substream,
+								params);
 			if (ret < 0) {
 				*last = component;
 				return soc_component_ret(component, ret);
@@ -807,6 +852,11 @@ void snd_soc_pcm_component_hw_free(struct snd_pcm_substream *substream,
 			ret = component->driver->hw_free(component, substream);
 			if (ret < 0)
 				soc_component_ret(component, ret);
+		} else if (component->driver->ops &&
+			   component->driver->ops->hw_free) {
+			ret = component->driver->ops->hw_free(substream);
+			if (ret < 0)
+				soc_component_ret(component, ret);
 		}
 	}
 }
@@ -821,6 +871,11 @@ int snd_soc_pcm_component_trigger(struct snd_pcm_substream *substream,
 	for_each_rtd_components(rtd, i, component) {
 		if (component->driver->trigger) {
 			ret = component->driver->trigger(component, substream, cmd);
+			if (ret < 0)
+				return soc_component_ret(component, ret);
+		} else if (component->driver->ops &&
+			   component->driver->ops->trigger) {
+			ret = component->driver->ops->trigger(substream, cmd);
 			if (ret < 0)
 				return soc_component_ret(component, ret);
 		}
@@ -876,6 +931,8 @@ int snd_soc_pcm_component_ack(struct snd_pcm_substream *substream)
 	for_each_rtd_components(rtd, i, component)
 		if (component->driver->ack)
 			return component->driver->ack(component, substream);
+		else if (component->driver->ops && component->driver->ops->ack)
+			return component->driver->ops->ack(substream);
 
 	return 0;
 }

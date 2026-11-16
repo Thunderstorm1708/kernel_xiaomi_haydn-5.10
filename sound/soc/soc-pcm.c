@@ -2851,17 +2851,18 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 	for_each_rtd_components(rtd, i, component) {
 		const struct snd_soc_component_driver *drv = component->driver;
 
-		if (drv->ioctl)
+		/* drv->ops: msm-5.4 style snd_pcm_ops (lahaina audio techpack) */
+		if (drv->ioctl || (drv->ops && drv->ops->ioctl))
 			rtd->ops.ioctl		= snd_soc_pcm_component_ioctl;
 		if (drv->sync_stop)
 			rtd->ops.sync_stop	= snd_soc_pcm_component_sync_stop;
-		if (drv->copy_user)
+		if (drv->copy_user || (drv->ops && drv->ops->copy_user))
 			rtd->ops.copy_user	= snd_soc_pcm_component_copy_user;
-		if (drv->page)
+		if (drv->page || (drv->ops && drv->ops->page))
 			rtd->ops.page		= snd_soc_pcm_component_page;
-		if (drv->mmap)
+		if (drv->mmap || (drv->ops && drv->ops->mmap))
 			rtd->ops.mmap		= snd_soc_pcm_component_mmap;
-		if (drv->ack)
+		if (drv->ack || (drv->ops && drv->ops->ack))
 			rtd->ops.ack            = snd_soc_pcm_component_ack;
 	}
 

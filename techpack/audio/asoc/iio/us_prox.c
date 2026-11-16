@@ -37,7 +37,6 @@
 extern void iio_device_unregister(struct iio_dev *indio_dev);
 extern void iio_device_free(struct iio_dev *dev);
 extern int __iio_device_register(struct iio_dev *indio_dev, struct module *this_mod);
-extern struct iio_dev *iio_device_alloc(int sizeof_priv);
 struct iio_buffer *iio_kefifo_allocate(void);
 void iio_kefifo_free(struct iio_buffer *r);
 struct iio_poll_func
@@ -154,9 +153,9 @@ int us_afe_callback(int data)
 {
 	int ret;
 	struct us_prox_el_data el_data;
-	struct timespec ts;
-	getnstimeofday(&ts);
-	el_data.timestamp = timespec_to_ns(&ts);
+	struct timespec64 ts;
+	ktime_get_real_ts64(&ts);
+	el_data.timestamp = timespec64_to_ns(&ts);
 	pr_info("%s: data = %d\n", __func__, data);
 
 	if (!data)
@@ -266,7 +265,7 @@ static int us_proximity_iio_setup(struct us_prox_data *data)
 	struct us_prox_data **priv_data;
 	int ret = 0;
 
-	idev = iio_device_alloc(sizeof(*priv_data));
+	idev = iio_device_alloc(NULL, sizeof(*priv_data));
 	if (!idev) {
 		pr_err("us prox IIO memory alloc fail\n");
 		return -ENOMEM;
