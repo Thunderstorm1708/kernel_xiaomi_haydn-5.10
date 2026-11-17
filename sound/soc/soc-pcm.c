@@ -13,6 +13,8 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/delay.h>
+#include <linux/of_device.h>
+#include <linux/dma-mapping.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
@@ -29,6 +31,31 @@
 #include <trace/hooks/sound.h>
 
 #define DPCM_MAX_BE_USERS	8
+
+#ifdef CONFIG_AUDIO_QGKI
+/* ASoC no host IO hardware (msm-5.4: hostless QDSP6 links) */
+static const struct snd_pcm_hardware no_host_hardware = {
+	.info			= SNDRV_PCM_INFO_MMAP |
+				  SNDRV_PCM_INFO_MMAP_VALID |
+				  SNDRV_PCM_INFO_INTERLEAVED |
+				  SNDRV_PCM_INFO_PAUSE |
+				  SNDRV_PCM_INFO_RESUME,
+	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
+				  SNDRV_PCM_FMTBIT_S24_LE |
+				  SNDRV_PCM_FMTBIT_S24_3LE |
+				  SNDRV_PCM_FMTBIT_S32_LE,
+	.period_bytes_min	= PAGE_SIZE >> 2,
+	.period_bytes_max	= PAGE_SIZE >> 1,
+	.periods_min		= 2,
+	.periods_max		= 4,
+	.buffer_bytes_max	= PAGE_SIZE * 4,
+	.fifo_size		= 0,
+};
+#define soc_pcm_no_host(rtd) \
+	((rtd)->dai_link->no_host_mode == SND_SOC_DAI_LINK_NO_HOST)
+#else
+#define soc_pcm_no_host(rtd) false
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static const char *dpcm_state_string(enum snd_soc_dpcm_state state)
@@ -726,6 +753,11 @@ static int soc_pcm_open(struct snd_pcm_substream *substream)
 			goto err;
 	}
 
+#ifdef CONFIG_AUDIO_QGKI
+	if (soc_pcm_no_host(rtd))
+		snd_soc_set_runtime_hwparams(substream, &no_host_hardware);
+#endif
+
 	/* Dynamic PCM DAI links compat checks use dynamic capabilities */
 	if (rtd->dai_link->dynamic || rtd->dai_link->no_pcm)
 		goto dynamic;
@@ -876,6 +908,16 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 	if (ret)
 		goto out;
 
+#ifdef CONFIG_AUDIO_QGKI
+	/* hostless links: apply the back end fixup here (msm-5.4) */
+	if (soc_pcm_no_host(rtd) && rtd->dai_link->be_hw_params_fixup) {
+		ret = rtd->dai_link->be_hw_params_fixup(rtd, params);
+		if (ret < 0)
+			dev_err(rtd->card->dev, "ASoC: fixup failed for %s\n",
+				rtd->dai_link->name);
+	}
+#endif
+
 	ret = snd_soc_link_hw_params(substream, params);
 	if (ret < 0)
 		goto out;
@@ -952,6 +994,21 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		goto component_err;
 
+#ifdef CONFIG_AUDIO_QGKI
+	/* malloc a page for hostless IO */
+	if (soc_pcm_no_host(rtd)) {
+		substream->dma_buffer.dev.type = SNDRV_DMA_TYPE_DEV;
+		substream->dma_buffer.dev.dev = rtd->dev;
+		substream->dma_buffer.dev.dev->coherent_dma_mask =
+					DMA_BIT_MASK(sizeof(dma_addr_t) * 8);
+		substream->dma_buffer.private_data = NULL;
+
+		of_dma_configure(substream->dma_buffer.dev.dev, NULL, true);
+		ret = snd_pcm_lib_malloc_pages(substream, PAGE_SIZE);
+		if (ret < 0)
+			goto component_err;
+	}
+#endif
 out:
 	mutex_unlock(&rtd->card->pcm_mutex);
 	return ret;
@@ -1026,6 +1083,10 @@ static int soc_pcm_hw_free(struct snd_pcm_substream *substream)
 		snd_soc_dai_hw_free(dai, substream);
 	}
 
+#ifdef CONFIG_AUDIO_QGKI
+	if (soc_pcm_no_host(rtd))
+		snd_pcm_lib_free_pages(substream);
+#endif
 	mutex_unlock(&rtd->card->pcm_mutex);
 	return 0;
 }
@@ -2890,6 +2951,25 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 		return ret;
 	}
 
+#ifdef CONFIG_AUDIO_QGKI
+	/* setup any hostless PCMs - i.e. no host IO is performed */
+	if (rtd->dai_link->no_host_mode) {
+		struct snd_pcm_str *pstr;
+
+		if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
+			pstr = &pcm->streams[SNDRV_PCM_STREAM_PLAYBACK];
+			pstr->substream->hw_no_buffer = 1;
+			snd_soc_set_runtime_hwparams(pstr->substream,
+						     &no_host_hardware);
+		}
+		if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream) {
+			pstr = &pcm->streams[SNDRV_PCM_STREAM_CAPTURE];
+			pstr->substream->hw_no_buffer = 1;
+			snd_soc_set_runtime_hwparams(pstr->substream,
+						     &no_host_hardware);
+		}
+	}
+#endif
 	pcm->no_device_suspend = true;
 out:
 	dev_dbg(rtd->card->dev, "%s <-> %s mapping ok\n",
