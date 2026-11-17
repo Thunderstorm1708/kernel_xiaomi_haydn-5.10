@@ -527,4 +527,5 @@ config MI_HARDWARE_ID
 	help
 	  This adds support for mi hwid.
 
+source "drivers/misc/haydn_bringup/Kconfig"
 endmenu

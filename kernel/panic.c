@@ -32,6 +32,7 @@
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
 #include <linux/sysfs.h>
+#include <linux/haydn_bootlog.h>
 #include <asm/sections.h>
 
 #define PANIC_TIMER_STEP 100
@@ -323,6 +324,10 @@ void panic(const char *fmt, ...)
 	 *
 	 * Bypass the panic_cpu check and call __crash_kexec directly.
 	 */
+	/* haydn bring-up: let another CPU write the panic to logdump first */
+	printk_safe_flush_on_panic();
+	haydn_bootlog_panic_wait();
+
 	if (!_crash_kexec_post_notifiers) {
 		printk_safe_flush_on_panic();
 		__crash_kexec(NULL);

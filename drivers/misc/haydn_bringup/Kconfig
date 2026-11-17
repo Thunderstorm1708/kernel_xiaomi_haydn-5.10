@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config HAYDN_BOOTLOG
+	bool "haydn bring-up: write the kernel log to the logdump partition"
+	depends on BLOCK && PRINTK
+	help
+	  Keep the kernel log of each boot on the logdump partition (16 MiB,
+	  two most recent boots alternate) so failed boots can be read back from
+	  recovery. Bring-up only.
