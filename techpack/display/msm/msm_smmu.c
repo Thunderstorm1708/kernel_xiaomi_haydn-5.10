@@ -173,10 +173,15 @@ static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
 	if (!client || !client->domain)
 		return -ENODEV;
 
+	/* the bootloader splash may already be early-mapped 1:1 */
+	if (iommu_iova_to_phys(client->domain, dest_address))
+		return 0;
 	ret = iommu_map(client->domain, dest_address, dest_address,
 			size, prot);
+	if (ret == -EEXIST)
+		ret = 0;
 	if (ret)
-		pr_err("smmu map failed\n");
+		pr_err("smmu map failed: %d\n", ret);
 
 	return ret;
 }
