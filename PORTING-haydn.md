@@ -296,7 +296,8 @@ instead:
 | test-1 | Zorix A16 | bootloop; fastboot only | diag build showed BRK in `exit_usb_ep_set_maxpacket_limit` at ~5.9 s → dwc3 kretprobe guard + dummy_hcd off |
 | diag #14 | Zorix A16 | to be tested | qseecom DT, audio, display fixes |
 | diag #17 | Zorix A16 | **no panic**: kernel up, `/init` runs at 8.4 s, fbcon log for 100+ s, then reboots to fastboot | no UFS disk (`sd*`) and no USB UDC, so first stage init cannot open `system_b` and falls back to the recovery ramdisk; SPMI reads to `pmr735b` fail (0x3) |
-| diag #20 | Zorix A16 | to be tested | prints devices stuck in deferred probe + missing suppliers; `clk_ignore_unused pd_ignore_unused` |
+| diag #20 | Zorix A16 | twice: screen goes black at ~9.1 s, right after first stage init loads `sys_pm_vx` / `hwid` from vendor_boot, Mi logo ~15 s later, then fastboot. #17 videos show the same black at the same point, so #17's 100 s run with no UFS was the **second** boot, in recovery mode (11 recovery modules) | silent hard reset while vendor_boot modules load (likely a deferred built-in device, e.g. UFS, probing once a module supplier appears) |
+| diag #22 | Zorix A16 | to be tested | deferred list printed right before `/init` and held 15 s; every probe after that is printed |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -318,8 +319,9 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   controller (`SLIMBUS_MSM_NGD` + `BTFM_SLIM` on 5.4). msm-5.10 has only the upstream
   `qcom-ngd-ctrl` (`qcom,slim-ngd-v1.5.0`/`v2.1.0`), and SLIMBUS is not enabled
   in `haydn_GKI.config`. This needs porting `slim-msm-ngd` or converting the DT.
-* **UFS and USB do not probe (build #17)**: no `sd*` disk and no UDC. Next diag
-  build lists what they wait for.
+* **Silent reset ~0.7 s after /init starts loading vendor_boot modules** (builds
+  #17 and #20). After the reset the bootloader boots recovery mode, where only the
+  11 recovery modules load and UFS/USB never probe (no `sd*`, no UDC).
 * fastrpc minidump CMA buffer: allocated before `adsprpc-mem` probes.
 * mem-buf: `qcom,vmid` missing in the 5.4 DT.
 * After first boot: Wi-Fi, BT, audio and haptics checked against the reference
