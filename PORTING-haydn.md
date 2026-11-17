@@ -251,6 +251,15 @@ Notes:
 * `lahaina.c`: dev PM QoS uses `PM_QOS_RESUME_LATENCY_NO_CONSTRAINT`
   (`PM_QOS_DEFAULT_VALUE` is gone from the dev PM QoS API).
 
+### RPMh
+
+* msm-5.10 `rpmh-rsc` has five TCS types (`FAST_PATH_TCS` = 4) and requires
+  `qcom,tcs-config` to list all five, else probe fails with `-EINVAL` (silently,
+  at arch_initcall, before any console). The 5.4 lahaina DT lists four, so the
+  RSCs never probed and everything behind RPMh (regulators, rpmh clocks, BCM
+  voters → GCC, NoC, SMMU, UFS, USB, display) deferred forever. Both RSC nodes now
+  end with `<FAST_PATH_TCS 0>`.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -297,7 +306,9 @@ instead:
 | diag #14 | Zorix A16 | to be tested | qseecom DT, audio, display fixes |
 | diag #17 | Zorix A16 | **no panic**: kernel up, `/init` runs at 8.4 s, fbcon log for 100+ s, then reboots to fastboot | no UFS disk (`sd*`) and no USB UDC, so first stage init cannot open `system_b` and falls back to the recovery ramdisk; SPMI reads to `pmr735b` fail (0x3) |
 | diag #20 | Zorix A16 | twice: screen goes black at ~9.1 s, right after first stage init loads `sys_pm_vx` / `hwid` from vendor_boot, Mi logo ~15 s later, then fastboot. #17 videos show the same black at the same point, so #17's 100 s run with no UFS was the **second** boot, in recovery mode (11 recovery modules) | silent hard reset while vendor_boot modules load (likely a deferred built-in device, e.g. UFS, probing once a module supplier appears) |
-| diag #22 | Zorix A16 | to be tested | deferred list printed right before `/init` and held 15 s; every probe after that is printed |
+| diag #23 | Zorix A16 | recovery-mode boot shows 128 devices deferred, chains end at `100000.qcom,gcc`, `rpmh-regulator-*`, `qcom,rpmhclk` | dump only roots next |
+| diag #24 | Zorix A16 | reaches `/init` hold, runs ~1:45, then fastboot. `key:` lines: cmd-db bound, **`18200000.rsc` and `af20000.rsc` exist but no driver**; all rpmh regulators/rpmhclk/bcm-voter never created; gcc, SMMU, NoC, UFS unbound (119 deferred, 29 roots) | **root cause**: msm-5.10 `rpmh-rsc` needs 5 `qcom,tcs-config` pairs (`FAST_PATH_TCS` added), 5.4 DT has 4 → `-EINVAL` before the console is up |
+| diag #25 | Zorix A16 | to be tested | `<FAST_PATH_TCS 0>` added to apps_rsc and disp_rsc |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -342,9 +353,12 @@ What was learnt here, useful for 5.15/6.x or another lahaina device:
    kretprobe) crash on hardware that is not there.
 6. Ship as AnyKernel3 (boot Image + vendor_boot dtb/modules + dtbo) so the ROM does
    not need to change. Check whether the ROM kernel is monolithic (no modules).
-7. Have a working on-screen log and logdump before the first flash; pstore
+7. Check every DT property count/format a newer driver parses (e.g. rpmh-rsc
+   `qcom,tcs-config` went from 4 to 5 entries): a silent `-EINVAL` in an early
+   core driver shows up only as hundreds of deferred devices.
+8. Have a working on-screen log and logdump before the first flash; pstore
    was empty after panics on haydn.
-8. Keep fastboot images of the installed ROM; there is no separate recovery.
+9. Keep fastboot images of the installed ROM; there is no separate recovery.
 
 ## Device tree side
 
