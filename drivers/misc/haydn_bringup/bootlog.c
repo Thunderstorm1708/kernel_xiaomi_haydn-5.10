@@ -255,7 +255,7 @@ void haydn_bootlog_before_init(void)
 
 	pr_info("bootlog: ===== before /init: devices still waiting =====\n");
 	driver_deferred_probe_dump();
-	for (i = 15; i > 0; i -= 5) {
+	for (i = 20; i > 0; i -= 5) {
 		pr_info("bootlog: ===== holding %d s for photos =====\n", i);
 		ssleep(5);
 	}
@@ -281,7 +281,7 @@ static int bootlog_thread(void *unused)
 			pr_info("bootlog: tick %d\n", tick);
 			if (tick == 15 || tick == 45 || tick == 75)
 				show_tasks();
-			if (tick == 12 || tick == 30 || tick == 60)
+			if (tick == 3 || tick == 12 || tick == 30 || tick == 60)
 				driver_deferred_probe_dump();
 			tick++;
 		}

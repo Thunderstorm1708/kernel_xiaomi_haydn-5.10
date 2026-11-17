@@ -29,6 +29,8 @@
 #include <linux/pinctrl/devinfo.h>
 #include <linux/slab.h>
 
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/haydn_bootlog.h>
 #include "base.h"
 #include "power/power.h"
@@ -311,19 +313,67 @@ bool haydn_probe_trace;
  * haydn bring-up: list every device still waiting to probe, why, and which
  * suppliers (device links / fw_devlink fwnode links) it is waiting for.
  */
+static void haydn_key_status(const char *compat)
+{
+	struct device_node *np;
+	struct platform_device *pdev;
+
+	for_each_compatible_node(np, NULL, compat) {
+		pdev = of_find_device_by_node(np);
+		pr_info("key: %s %pOF avail=%d dev=%s drv=%s\n", compat, np,
+			of_device_is_available(np),
+			pdev ? dev_name(&pdev->dev) : "NONE",
+			pdev && pdev->dev.driver ? pdev->dev.driver->name : "NONE");
+		if (pdev)
+			put_device(&pdev->dev);
+	}
+}
+
+static bool haydn_dev_pending(struct device *dev)
+{
+	return dev->p && !list_empty(&dev->p->deferred_probe);
+}
+
+/*
+ * Print only the roots: deferred devices none of whose missing suppliers is
+ * itself a deferred device. Those (and any supplier with no device at all)
+ * are what blocks everything else.
+ */
 void driver_deferred_probe_dump(void)
 {
+	static const char * const keys[] = {
+		"qcom,cmd-db", "qcom,rpmh-rsc", "qcom,rpmh-vrm-regulator",
+		"qcom,rpmh-clk-lahaina", "qcom,lahaina-rpmh-clk", "qcom,gcc-lahaina",
+		"qcom,lahaina-gcc", "qcom,smmu-v2", "qcom,qsmmu-v500",
+		"qcom,lahaina-aggre1_noc", "qcom,bcm-voter", "qcom,ufshc",
+	};
 	struct device_private *p;
 	struct device_link *link;
 	struct fwnode_link *fl;
-	int n = 0, idx;
+	int n = 0, roots = 0, idx, i;
+
+	for (i = 0; i < ARRAY_SIZE(keys); i++)
+		haydn_key_status(keys[i]);
 
 	mutex_lock(&deferred_probe_mutex);
 	list_for_each_entry(p, &deferred_probe_pending_list, deferred_probe) {
 		struct device *dev = p->device;
+		bool blocked = false;
 
 		n++;
-		pr_info("defer: %s [%s] %s", dev_name(dev),
+		idx = device_links_read_lock();
+		list_for_each_entry_rcu(link, &dev->links.suppliers, c_node,
+					device_links_read_lock_held())
+			if (link->status != DL_STATE_AVAILABLE &&
+			    link->status != DL_STATE_CONSUMER_PROBE &&
+			    link->status != DL_STATE_ACTIVE &&
+			    haydn_dev_pending(link->supplier))
+				blocked = true;
+		device_links_read_unlock(idx);
+		if (blocked)
+			continue;
+		roots++;
+		pr_info("root: %s [%s] %s", dev_name(dev),
 			dev->driver ? dev->driver->name : (dev->bus ? dev->bus->name : "-"),
 			p->deferred_probe_reason ? p->deferred_probe_reason : "(no reason)\n");
 		idx = device_links_read_lock();
@@ -332,15 +382,16 @@ void driver_deferred_probe_dump(void)
 			if (link->status != DL_STATE_AVAILABLE &&
 			    link->status != DL_STATE_CONSUMER_PROBE &&
 			    link->status != DL_STATE_ACTIVE)
-				pr_info("defer:   needs %s (link state %d)\n",
-					dev_name(link->supplier), link->status);
+				pr_info("root:   needs %s (state %d, %s)\n",
+					dev_name(link->supplier), link->status,
+					link->supplier->driver ? "bound" : "no driver");
 		device_links_read_unlock(idx);
 		if (dev->fwnode)
 			list_for_each_entry(fl, &dev->fwnode->suppliers, c_hook)
-				pr_info("defer:   needs fwnode %pfwP\n", fl->supplier);
+				pr_info("root:   needs fwnode %pfwP (no device)\n", fl->supplier);
 	}
 	mutex_unlock(&deferred_probe_mutex);
-	pr_info("defer: %d device(s) waiting\n", n);
+	pr_info("defer: %d device(s) waiting, %d root(s)\n", n, roots);
 }
 #endif
 
@@ -694,6 +745,8 @@ pinctrl_bind_failed:
 	case -ENXIO:
 		pr_debug("%s: probe of %s rejects match %d\n",
 			 drv->name, dev_name(dev), ret);
+		if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
+			pr_info("probe-fail: %s (%s) %d\n", dev_name(dev), drv->name, ret);
 		break;
 	default:
 		/* driver matched but the probe failed */
