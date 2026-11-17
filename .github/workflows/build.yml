@@ -17,6 +17,14 @@ jobs:
       KCONFIGS: gki_defconfig vendor/lahaina_GKI.config vendor/haydn_GKI.config
       # device specific techpack bits (Xiaomi audio amps, camera sensors)
       TARGET_PRODUCT: haydn
+      # compiler cache: unchanged objects are reused between runs
+      CCACHE_DIR: /home/runner/.cache/ccache
+      CCACHE_MAXSIZE: 8G
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: time_macros,file_macro,locale
+      CCACHE_NOHASHDIR: "true"
+      KBUILD_BUILD_USER: Thunderstorm1708
+      KBUILD_BUILD_HOST: github
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,17 +39,40 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 lld-18 llvm-18 flex bison bc libssl-dev libelf-dev \
-            dwarves cpio device-tree-compiler python3 kmod zip
+            dwarves cpio device-tree-compiler python3 kmod zip ccache
           for t in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip; do
             sudo ln -sf /usr/bin/$t-18 /usr/local/bin/$t
           done
           clang --version
 
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+            ccache-
+
       - name: Configure
-        run: make O=out $KCONFIGS
+        run: |
+          ccache -z
+          make O=out CC="ccache clang" HOSTCC="ccache clang" $KCONFIGS
 
       - name: Build Image, modules and dtbs
-        run: make O=out -j$(nproc --all) Image modules dtbs 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          make O=out CC="ccache clang" HOSTCC="ccache clang" -j$(nproc --all) Image modules dtbs 2>&1 | tee build.log
+
+      - name: Save compiler cache
+        if: always()
+        run: ccache -s
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: /home/runner/.cache/ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
 
       - name: Package
         if: always()
@@ -58,7 +89,7 @@ jobs:
 
       - name: Vendor_boot module set
         run: |
-          make O=out INSTALL_MOD_PATH=$PWD/mods INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
+          make O=out CC="ccache clang" HOSTCC="ccache clang" INSTALL_MOD_PATH=$PWD/mods INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
           KREL=$(cat out/include/config/kernel.release)
           V=$PWD/dist/vendor_modules F=$PWD/flat/lib/modules/0.0
           rm -rf "$V" flat; mkdir -p "$V" "$F"
