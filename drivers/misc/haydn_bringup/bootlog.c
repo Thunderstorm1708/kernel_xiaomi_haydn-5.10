@@ -242,6 +242,27 @@ static void show_tasks(void)
 	rcu_read_unlock();
 }
 
+/*
+ * Called by kernel_init() right before /init runs: every built-in driver
+ * has had its chance, so the deferred list shows what is still missing.
+ * Hold it on screen for 15 s, then log every probe that follows (first
+ * stage init loading modules) so the last line before a silent reset
+ * names the device.
+ */
+void haydn_bootlog_before_init(void)
+{
+	int i;
+
+	pr_info("bootlog: ===== before /init: devices still waiting =====\n");
+	driver_deferred_probe_dump();
+	for (i = 15; i > 0; i -= 5) {
+		pr_info("bootlog: ===== holding %d s for photos =====\n", i);
+		ssleep(5);
+	}
+	WRITE_ONCE(haydn_probe_trace, true);
+	pr_info("bootlog: probe trace on\n");
+}
+
 static int bootlog_thread(void *unused)
 {
 	static char line[1024];

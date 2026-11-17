@@ -305,6 +305,8 @@ static void deferred_probe_timeout_work_func(struct work_struct *work)
 }
 static DECLARE_DELAYED_WORK(deferred_probe_timeout_work, deferred_probe_timeout_work_func);
 #ifdef CONFIG_HAYDN_BOOTLOG
+bool haydn_probe_trace;
+
 /*
  * haydn bring-up: list every device still waiting to probe, why, and which
  * suppliers (device links / fw_devlink fwnode links) it is waiting for.
@@ -540,6 +542,10 @@ static int really_probe(struct device *dev, struct device_driver *drv)
 	bool test_remove = IS_ENABLED(CONFIG_DEBUG_TEST_DRIVER_REMOVE) &&
 			   !drv->suppress_bind_attrs;
 
+#ifdef CONFIG_HAYDN_BOOTLOG
+	if (READ_ONCE(haydn_probe_trace))
+		pr_info("probe: %s (%s)\n", dev_name(dev), drv->name);
+#endif
 	if (defer_all_probes) {
 		/*
 		 * Value of defer_all_probes can be set only by

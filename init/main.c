@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/ioport.h>
 #include <linux/init.h>
+#include <linux/haydn_bootlog.h>
 #include <linux/initrd.h>
 #include <linux/memblock.h>
 #include <linux/acpi.h>
@@ -1391,6 +1392,7 @@ static int __ref kernel_init(void *unused)
 
 	do_sysctl_args();
 
+	haydn_bootlog_before_init();
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
 		if (!ret)
