@@ -456,7 +456,7 @@
 	};
 
 	/* global autoconfigured region for contiguous allocations */
-	linux,cma {
+	system_cma: linux,cma {
 		compatible = "shared-dma-pool";
 		alloc-ranges = <0x0 0x00000000 0x0 0xdfffffff>;
 		reusable;
@@ -531,6 +531,12 @@
 	#size-cells = <1>;
 	ranges = <0 0 0 0xffffffff>;
 	compatible = "simple-bus";
+
+	/* msm-5.10 qcom-dma-iommu-generic: arm-smmu defers until this probes */
+	qcom,iommu-dma {
+		compatible = "qcom,iommu-dma";
+		memory-region = <&system_cma>;
+	};
 
 	psci {
 		compatible = "arm,psci-1.0";
