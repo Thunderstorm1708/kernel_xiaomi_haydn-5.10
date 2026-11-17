@@ -2706,6 +2706,17 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_AUDIO_QGKI
+	/*
+	 * msm-5.4 behaviour: the QDSP6 back ends declare their directions in
+	 * the dai_link (dpcm_playback/capture) and some CPU DAIs (MI2S with
+	 * no lines) advertise no channels, so trust the link flags.
+	 */
+	if (rtd->dai_link->dynamic || rtd->dai_link->no_pcm) {
+		playback = rtd->dai_link->dpcm_playback;
+		capture = rtd->dai_link->dpcm_capture;
+	} else
+#endif
 	if (rtd->dai_link->dynamic || rtd->dai_link->no_pcm) {
 		if (rtd->dai_link->dpcm_playback) {
 			stream = SNDRV_PCM_STREAM_PLAYBACK;
