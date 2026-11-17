@@ -874,9 +874,9 @@ static int soc_dai_link_sanity_check(struct snd_soc_card *card,
 		 * component list.
 		 */
 		if (!soc_find_component(codec)) {
-			dev_dbg(card->dev,
+			dev_info(card->dev,
 				"ASoC: codec component %s not found for link %s\n",
-				codec->name, link->name);
+				codec->name ?: codec->of_node->full_name, link->name);
 			return -EPROBE_DEFER;
 		}
 	}
@@ -899,9 +899,9 @@ static int soc_dai_link_sanity_check(struct snd_soc_card *card,
 		 * component list.
 		 */
 		if (!soc_find_component(platform)) {
-			dev_dbg(card->dev,
+			dev_info(card->dev,
 				"ASoC: platform component %s not found for link %s\n",
-				platform->name, link->name);
+				platform->name ?: platform->of_node->full_name, link->name);
 			return -EPROBE_DEFER;
 		}
 	}
@@ -925,9 +925,9 @@ static int soc_dai_link_sanity_check(struct snd_soc_card *card,
 		 */
 		if ((cpu->of_node || cpu->name) &&
 		    !soc_find_component(cpu)) {
-			dev_dbg(card->dev,
+			dev_info(card->dev,
 				"ASoC: cpu component %s not found for link %s\n",
-				cpu->name, link->name);
+				cpu->name ?: cpu->of_node->full_name, link->name);
 			return -EPROBE_DEFER;
 		}
 
