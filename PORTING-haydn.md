@@ -295,12 +295,16 @@ instead:
 | first zip | Zorix A16 (5.4 monolithic) | bootloop, recovery too | zip would have aborted on missing `lib/modules` → created by the zip |
 | test-1 | Zorix A16 | bootloop; fastboot only | diag build showed BRK in `exit_usb_ep_set_maxpacket_limit` at ~5.9 s → dwc3 kretprobe guard + dummy_hcd off |
 | diag #14 | Zorix A16 | to be tested | qseecom DT, audio, display fixes |
-| diag #17 | Zorix A16 | to be tested | + 5.4 cdsp-loader / sensors_ssc |
+| diag #17 | Zorix A16 | **no panic**: kernel up, `/init` runs at 8.4 s, fbcon log for 100+ s, then reboots to fastboot | no UFS disk (`sd*`) and no USB UDC, so first stage init cannot open `system_b` and falls back to the recovery ramdisk; SPMI reads to `pmr735b` fail (0x3) |
+| diag #20 | Zorix A16 | to be tested | prints devices stuck in deferred probe + missing suppliers; `clk_ignore_unused pd_ignore_unused` |
 
-Non-fatal errors seen on screen before the panic (being worked through):
+Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
 buffer allocated before `adsprpc-mem` probes; harmless), mem-buf missing
-`qcom,vmid`, msm_hang_detect.
+`qcom,vmid`, msm_hang_detect, `spmi pmic_arb_wait_for_done: transaction failed (0x3)` and
+`qcom-spmi-gpio ...pmr735b: probe failed -5` / `spmi-temp-alarm ...pmr735b` (that PMIC
+does not answer on haydn), devfreq qoslat "Unable to find governor", `udc-core:
+couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
 
 ## Known issues and TODO
 
@@ -314,6 +318,8 @@ buffer allocated before `adsprpc-mem` probes; harmless), mem-buf missing
   controller (`SLIMBUS_MSM_NGD` + `BTFM_SLIM` on 5.4). msm-5.10 has only the upstream
   `qcom-ngd-ctrl` (`qcom,slim-ngd-v1.5.0`/`v2.1.0`), and SLIMBUS is not enabled
   in `haydn_GKI.config`. This needs porting `slim-msm-ngd` or converting the DT.
+* **UFS and USB do not probe (build #17)**: no `sd*` disk and no UDC. Next diag
+  build lists what they wait for.
 * fastrpc minidump CMA buffer: allocated before `adsprpc-mem` probes.
 * mem-buf: `qcom,vmid` missing in the 5.4 DT.
 * After first boot: Wi-Fi, BT, audio and haptics checked against the reference
