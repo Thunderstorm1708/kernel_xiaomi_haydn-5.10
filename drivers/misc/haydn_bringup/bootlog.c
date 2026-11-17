@@ -99,6 +99,24 @@ static long log_seq(struct block_device *bdev)
 
 static long my_seq;
 
+static int count_disk(struct device *dev, void *data)
+{
+	const char *n = dev_name(dev);
+
+	if (dev->type == &disk_type && n && (!strncmp(n, "sd", 2) || !strncmp(n, "mmcblk", 6)))
+		(*(int *)data)++;
+	return 0;
+}
+
+/* no disk yet: don't probe minors (each miss is a module_request + avc line) */
+static bool have_disk(void)
+{
+	int n = 0;
+
+	class_for_each_device(&block_class, NULL, &n, count_disk);
+	return n > 0;
+}
+
 static struct block_device *find_logdump(void)
 {
 	static const unsigned int majors[] = { 8, 259 };
@@ -242,12 +260,14 @@ static int bootlog_thread(void *unused)
 			pr_info("bootlog: tick %d\n", tick);
 			if (tick == 15 || tick == 45 || tick == 75)
 				show_tasks();
+			if (tick == 12 || tick == 30 || tick == 60)
+				driver_deferred_probe_dump();
 			tick++;
 		}
 		mutex_lock(&bootlog_lock);
 		while (kmsg_dump_get_line(iter, false, line, sizeof(line), &len))
 			append(line, len);
-		if (!log_bdev) {
+		if (!log_bdev && have_disk()) {
 			log_bdev = find_logdump();
 			if (log_bdev) {
 				char seq[SEQ_DIGITS + 1];

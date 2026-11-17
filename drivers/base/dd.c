@@ -29,6 +29,7 @@
 #include <linux/pinctrl/devinfo.h>
 #include <linux/slab.h>
 
+#include <linux/haydn_bootlog.h>
 #include "base.h"
 #include "power/power.h"
 
@@ -303,6 +304,44 @@ static void deferred_probe_timeout_work_func(struct work_struct *work)
 	mutex_unlock(&deferred_probe_mutex);
 }
 static DECLARE_DELAYED_WORK(deferred_probe_timeout_work, deferred_probe_timeout_work_func);
+#ifdef CONFIG_HAYDN_BOOTLOG
+/*
+ * haydn bring-up: list every device still waiting to probe, why, and which
+ * suppliers (device links / fw_devlink fwnode links) it is waiting for.
+ */
+void driver_deferred_probe_dump(void)
+{
+	struct device_private *p;
+	struct device_link *link;
+	struct fwnode_link *fl;
+	int n = 0, idx;
+
+	mutex_lock(&deferred_probe_mutex);
+	list_for_each_entry(p, &deferred_probe_pending_list, deferred_probe) {
+		struct device *dev = p->device;
+
+		n++;
+		pr_info("defer: %s [%s] %s", dev_name(dev),
+			dev->driver ? dev->driver->name : (dev->bus ? dev->bus->name : "-"),
+			p->deferred_probe_reason ? p->deferred_probe_reason : "(no reason)\n");
+		idx = device_links_read_lock();
+		list_for_each_entry_rcu(link, &dev->links.suppliers, c_node,
+					device_links_read_lock_held())
+			if (link->status != DL_STATE_AVAILABLE &&
+			    link->status != DL_STATE_CONSUMER_PROBE &&
+			    link->status != DL_STATE_ACTIVE)
+				pr_info("defer:   needs %s (link state %d)\n",
+					dev_name(link->supplier), link->status);
+		device_links_read_unlock(idx);
+		if (dev->fwnode)
+			list_for_each_entry(fl, &dev->fwnode->suppliers, c_hook)
+				pr_info("defer:   needs fwnode %pfwP\n", fl->supplier);
+	}
+	mutex_unlock(&deferred_probe_mutex);
+	pr_info("defer: %d device(s) waiting\n", n);
+}
+#endif
+
 
 /**
  * deferred_probe_initcall() - Enable probing of deferred devices
