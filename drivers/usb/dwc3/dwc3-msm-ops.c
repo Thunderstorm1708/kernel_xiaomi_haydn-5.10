@@ -25,11 +25,18 @@ static int entry_usb_ep_set_maxpacket_limit(struct kretprobe_instance *ri,
 				struct pt_regs *regs)
 {
 	struct dwc3_ep *dep = (struct dwc3_ep *)regs->regs[0];
-	struct dwc3 *dwc = dep->dwc;
 	struct kprobe_data *data = (struct kprobe_data *)ri->data;
 
-	data->dwc = dwc;
-	data->xi0 = dep->number;
+	/*
+	 * usb_ep_set_maxpacket_limit() is called by every UDC (dummy_hcd too),
+	 * not only dwc3: only act on endpoints of a dwc3 that owns them.
+	 */
+	data->dwc = NULL;
+	if (dep && dep->dwc && dep->number < DWC3_ENDPOINTS_NUM &&
+	    dep->dwc->eps[dep->number] == dep) {
+		data->dwc = dep->dwc;
+		data->xi0 = dep->number;
+	}
 
 	return 0;
 }
@@ -40,8 +47,13 @@ static int exit_usb_ep_set_maxpacket_limit(struct kretprobe_instance *ri,
 	struct kprobe_data *data = (struct kprobe_data *)ri->data;
 	struct dwc3 *dwc = data->dwc;
 	u8 epnum = data->xi0;
-	struct dwc3_ep *dep = dwc->eps[epnum];
-	struct usb_ep *ep = &dep->endpoint;
+	struct dwc3_ep *dep;
+	struct usb_ep *ep;
+
+	if (!dwc)
+		return 0;
+	dep = dwc->eps[epnum];
+	ep = &dep->endpoint;
 
 	if (epnum >= 2) {
 		ep->maxpacket_limit = 1024;
