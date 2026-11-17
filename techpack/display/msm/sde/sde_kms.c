@@ -2150,6 +2150,24 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	for (i = 0; i < priv->num_encoders; i++)
 		priv->encoders[i]->possible_crtcs = (1 << priv->num_crtcs) - 1;
 
+	/*
+	 * 5.10: drm_mode_validate_pipeline() drops every mode of a connector
+	 * whose encoders have no possible CRTCs yet, so the DSI modes probed
+	 * in _sde_kms_setup_displays() were all pruned. Probe them again now.
+	 * (Found in the haydn ACK 5.10 bring-up, xiaomi-lahaina-devs.)
+	 */
+	mutex_lock(&dev->mode_config.mutex);
+	for (i = 0; i < priv->num_connectors; i++) {
+		struct drm_connector *conn = priv->connectors[i];
+
+		if (conn && conn->connector_type == DRM_MODE_CONNECTOR_DSI &&
+		    conn->funcs && conn->funcs->fill_modes)
+			conn->funcs->fill_modes(conn,
+					sde_kms->catalog->max_display_width,
+					sde_kms->catalog->max_display_height);
+	}
+	mutex_unlock(&dev->mode_config.mutex);
+
 	return 0;
 fail:
 	_sde_kms_drm_obj_destroy(sde_kms);
