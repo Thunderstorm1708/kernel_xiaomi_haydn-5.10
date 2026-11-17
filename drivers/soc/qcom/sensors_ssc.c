@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -21,7 +21,7 @@
 #include <linux/sysfs.h>
 #include <linux/workqueue.h>
 
-#include <linux/remoteproc.h>
+#include <soc/qcom/subsystem_restart.h>
 
 #define IMAGE_LOAD_CMD 1
 #define IMAGE_UNLOAD_CMD 0
@@ -78,7 +78,6 @@ static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 	struct slpi_loader_private *priv = NULL;
 	int ret;
 	const char *firmware_name = NULL;
-	phandle rproc_phandle;
 
 	if (!pdev) {
 		pr_err("%s: Platform device null\n", __func__);
@@ -105,31 +104,10 @@ static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 		goto fail;
 	}
 
-	if (!priv->pil_h) {
-		if (of_property_read_u32(pdev->dev.of_node, "qcom,rproc-handle",
-					 &rproc_phandle)) {
-			dev_err(&pdev->dev, "error reading rproc phandle\n");
-			goto fail;
-		}
-
-		priv->pil_h = rproc_get_by_phandle(rproc_phandle);
-		if (!priv->pil_h) {
-			dev_err(&pdev->dev, "rproc not found\n");
-			goto fail;
-		}
-		if  (strcmp(firmware_name, "slpi2.mdt") == 0) {
-			ret = rproc_set_firmware(priv->pil_h, firmware_name);
-			if (ret) {
-				dev_err(&pdev->dev, "%s: rproc set firmware failed,\n", __func__);
-				goto fail;
-			}
-		}
-	}
-
-	ret = rproc_boot(priv->pil_h);
-	if (ret) {
-		dev_err(&pdev->dev, "%s: rproc boot failed, err: %d\n",
-			__func__, ret);
+	priv->pil_h = subsystem_get_with_fwname("slpi", firmware_name);
+	if (IS_ERR(priv->pil_h)) {
+		dev_err(&pdev->dev, "%s: pil get failed,\n",
+			__func__);
 		goto fail;
 	}
 
@@ -157,7 +135,7 @@ static void slpi_loader_unload(struct platform_device *pdev)
 
 	if (priv->pil_h) {
 		dev_dbg(&pdev->dev, "%s: calling subsystem put\n", __func__);
-		rproc_shutdown(priv->pil_h);
+		subsystem_put(priv->pil_h);
 		priv->pil_h = NULL;
 	}
 }
@@ -168,7 +146,7 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 	size_t count)
 {
 	int ssr_cmd = 0;
-	struct rproc *sns_dev = NULL;
+	struct subsys_device *sns_dev = NULL;
 	struct platform_device *pdev = slpi_private;
 	struct slpi_loader_private *priv = NULL;
 
@@ -184,14 +162,17 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 	if (!priv)
 		return -EINVAL;
 
-	sns_dev = (struct rproc *)priv->pil_h;
+	sns_dev = (struct subsys_device *)priv->pil_h;
 	if (!sns_dev)
 		return -EINVAL;
 
-	dev_err(&pdev->dev, "requesting for SLPI restart\n");
+	dev_err(&pdev->dev, "Something went wrong with SLPI, restarting\n");
 
-	rproc_shutdown(sns_dev);
-	slpi_loader_do(pdev);
+	/* subsystem_restart_dev has worker queue to handle */
+	if (subsystem_restart_dev(sns_dev) != 0) {
+		dev_err(&pdev->dev, "subsystem_restart_dev failed\n");
+		return -EINVAL;
+	}
 
 	dev_dbg(&pdev->dev, "SLPI restarted\n");
 	return count;
@@ -285,7 +266,7 @@ static int slpi_loader_remove(struct platform_device *pdev)
 		return 0;
 
 	if (priv->pil_h) {
-		rproc_shutdown(priv->pil_h);
+		subsystem_put(priv->pil_h);
 		priv->pil_h = NULL;
 	}
 
@@ -366,26 +347,7 @@ const struct file_operations sensors_ssc_fops = {
 
 static int sensors_ssc_probe(struct platform_device *pdev)
 {
-	phandle rproc_phandle;
-	struct property *prop;
-	int size;
-	struct rproc *slpi;
-	int ret;
-
-	prop = of_find_property(pdev->dev.of_node, "qcom,rproc-handle",
-				&size);
-	if (!prop) {
-		dev_err(&pdev->dev, "Missing remotproc handle\n");
-		return -ENOPARAM;
-	}
-	rproc_phandle = be32_to_cpup(prop->value);
-	slpi = rproc_get_by_phandle(rproc_phandle);
-	if (!slpi) {
-		dev_err(&pdev->dev, "fail to get rproc\n", __func__);
-		return -EPROBE_DEFER;
-	}
-
-	ret = slpi_loader_init_sysfs(pdev);
+	int ret = slpi_loader_init_sysfs(pdev);
 
 	if (ret != 0) {
 		dev_err(&pdev->dev, "%s: Error in initing sysfs\n", __func__);
