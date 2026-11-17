@@ -552,7 +552,8 @@
 		qcom,tcs-config = <ACTIVE_TCS  2>,
 				  <SLEEP_TCS   3>,
 				  <WAKE_TCS    3>,
-				  <CONTROL_TCS 0>;
+				  <CONTROL_TCS 0>,
+				  <FAST_PATH_TCS 0>;
 
 		apps_bcm_voter: bcm_voter {
 			compatible = "qcom,bcm-voter";
@@ -3307,7 +3308,8 @@
 		qcom,tcs-config = <ACTIVE_TCS  0>,
 				  <SLEEP_TCS   1>,
 				  <WAKE_TCS    1>,
-				  <CONTROL_TCS 0>;
+				  <CONTROL_TCS 0>,
+				  <FAST_PATH_TCS 0>;
 
 		disp_bcm_voter: bcm_voter {
 			compatible = "qcom,bcm-voter";
