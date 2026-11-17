@@ -260,6 +260,13 @@ Notes:
   voters → GCC, NoC, SMMU, UFS, USB, display) deferred forever. Both RSC nodes now
   end with `<FAST_PATH_TCS 0>`.
 
+### IOMMU
+
+* msm-5.10 `arm_smmu_device_probe()` defers until `qcom-dma-iommu-generic`
+  (`compatible = "qcom,iommu-dma"`, `memory-region` = the `linux,cma-default`
+  pool, not dma-coherent) has probed. lahaina 5.4 DT had no such node; it is
+  added under `&soc` and the CMA pool got the label `system_cma`.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -308,7 +315,8 @@ instead:
 | diag #20 | Zorix A16 | twice: screen goes black at ~9.1 s, right after first stage init loads `sys_pm_vx` / `hwid` from vendor_boot, Mi logo ~15 s later, then fastboot. #17 videos show the same black at the same point, so #17's 100 s run with no UFS was the **second** boot, in recovery mode (11 recovery modules) | silent hard reset while vendor_boot modules load (likely a deferred built-in device, e.g. UFS, probing once a module supplier appears) |
 | diag #23 | Zorix A16 | recovery-mode boot shows 128 devices deferred, chains end at `100000.qcom,gcc`, `rpmh-regulator-*`, `qcom,rpmhclk` | dump only roots next |
 | diag #24 | Zorix A16 | reaches `/init` hold, runs ~1:45, then fastboot. `key:` lines: cmd-db bound, **`18200000.rsc` and `af20000.rsc` exist but no driver**; all rpmh regulators/rpmhclk/bcm-voter never created; gcc, SMMU, NoC, UFS unbound (119 deferred, 29 roots) | **root cause**: msm-5.10 `rpmh-rsc` needs 5 `qcom,tcs-config` pairs (`FAST_PATH_TCS` added), 5.4 DT has 4 → `-EINVAL` before the console is up |
-| diag #25 | Zorix A16 | to be tested | `<FAST_PATH_TCS 0>` added to apps_rsc and disp_rsc |
+| diag #26 | Zorix A16 | **RSC fix works**: rsc, all rpmh regulators, rpmhclk, gcc, NoC, bcm-voters bound (47 deferred, 4 roots). Still no UFS; first stage init gives up and `reboot: Restarting system with command 'bootloader'` at ~30 s → fastboot | roots `15000000.apps-smmu`, `3da0000.kgsl-smmu` (no reason): msm-5.10 arm-smmu waits for `qcom,iommu-dma`, which the 5.4 DT lacks |
+| diag #28 | Zorix A16 | to be tested | `qcom,iommu-dma` node (memory-region = linux,cma-default) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
