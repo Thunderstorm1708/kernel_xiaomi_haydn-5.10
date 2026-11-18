@@ -320,3 +320,10 @@
 		mbox-names = "aop";
 	};
 };
+
+/* msm-5.10 kgsl loads a660_zap itself from this region (msm-5.4 went through PIL) */
+&msm_gpu {
+	zap-shader {
+		memory-region = <&pil_gpu_mem>;
+	};
+};
