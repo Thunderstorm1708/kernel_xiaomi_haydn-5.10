@@ -80,6 +80,8 @@
 		reg-names = "base", "tcu-base";
 		#iommu-cells = <2>;
 		qcom,skip-init;
+		/* keep the bootloader's splash (MDSS) stream mapping: msm-5.10 only hands off listed SMRs */
+		qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>;
 		qcom,use-3-lvl-tables;
 		#global-interrupts = <2>;
 		#size-cells = <1>;
