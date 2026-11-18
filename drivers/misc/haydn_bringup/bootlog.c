@@ -322,7 +322,15 @@ void haydn_bootlog_flush_now(void)
 
 	if (!READ_ONCE(bootlog_flushed))
 		return;
-	mutex_lock(&bootlog_lock);
+
+	/*
+	 * Never block here: callers can run with interrupts disabled or in
+	 * atomic context (PCM trigger, codec DAI ops), and flush() sleeps in
+	 * submit_bio_wait(). If the lock is busy, skip; the kthread flushes
+	 * on its own schedule.
+	 */
+	if (!mutex_trylock(&bootlog_lock))
+		return;
 	while (kmsg_dump_get_line(&sync_iter, false, line, sizeof(line), &len))
 		append(line, len);
 	if (log_bdev && used > done)
