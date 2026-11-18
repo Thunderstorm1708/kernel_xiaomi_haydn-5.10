@@ -7,6 +7,7 @@
 
 #include <linux/highmem.h>
 #include <linux/mem-buf-exporter.h>
+#include <linux/msm_ion.h>
 #include "mem-buf-dev.h"
 #include "mem-buf-ids.h"
 
@@ -637,8 +638,18 @@ bool mem_buf_dma_buf_exclusive_owner(struct dma_buf *dmabuf)
 	bool ret = false;
 
 	vmperm = to_mem_buf_vmperm(dmabuf);
-	if (WARN_ON(IS_ERR(vmperm)))
-		return false;
+	if (IS_ERR(vmperm)) {
+		/*
+		 * Not a mem-buf buffer: lahaina userspace allocates from the
+		 * msm-5.4 ION heaps. Such a buffer is owned by HLOS alone
+		 * unless ION marked it secure.
+		 */
+		unsigned long flags = 0;
+
+		if (dma_buf_get_flags(dmabuf, &flags))
+			return true;
+		return !(flags & ION_FLAG_SECURE);
+	}
 
 	mutex_lock(&vmperm->lock);
 	ret = !vmperm->flags;
