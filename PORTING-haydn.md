@@ -195,6 +195,19 @@ Notes:
   `QCOM_LAZY_MAPPING` now depends on `QCOM_DMABUF_HEAPS || ION_MSM_HEAPS`, so it can be
   built in.
 
+### qseecom / keymaster
+
+* lahaina qseecomd and keymaster allocate from the msm-5.4 ION heaps; msm-5.10
+  qseecom assumed mem-buf buffers (`mem_buf_dma_buf_copy_vmperm` → -EINVAL), so
+  no listener registered and keymaster never came up (vold → keystore2 →
+  keymaster wait, init blocked in `vdc cryptfs mountFstab`).
+  `mem_buf_dma_buf_exclusive_owner()` now answers from the ION flags for
+  non-mem-buf buffers, and qseecom builds SHM bridges for ION buffers the 5.4
+  way.
+* logdump: haydn has **two** `logdump` partitions (sda24 and sde59); the
+  bootlog alternates between them. `/dev/block/by-name/logdump` points to only
+  one, so read both and take the higher `seq=`.
+
 ### PIL / subsystem restart (not remoteproc)
 
 * lahaina keeps the msm-5.4 PIL/SSR framework (the DT uses `qcom,pil-tz-generic`;
@@ -352,7 +365,8 @@ instead:
 | diag #31 | Zorix A16 | no panic; all built-in devices bind (`defer: 0`), UFS LUNs sda–sdf found, bootlog writes to logdump (sda24). First stage init loads 14 vendor_boot modules, then `reboot bootloader` at 33.9 s | init's own messages were rate limited away |
 | diag #35 | Zorix A16 | logdump: `cnss_plat_ipc_qmi_svc: module init failed: -19` → `init: Failed to load kernel modules` → `InitFatalReboot` | boots with `printk.devkmsg=on`; kernel logs failing module inits |
 | diag #38 | Zorix A16 | all vendor_boot modules up to msm_drm load; DSI ctrl0/1 probe; **hard freeze at 20.35 s** while dsi-display-primary probes (no further output, logger stopped too) | TE GPIO request hang (below) |
-| diag #39+ | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #40 | Zorix A16 | **Android second stage init runs** (system/vendor mounted, logd, servicemanager, keystore2...). Stuck from ~61 s: init blocked in `vdc cryptfs mountFstab`; vold waits for keystore2, keymaster never registers. qseecomd listener registration fails (`mem_buf_dma_buf_copy_vmperm -22`) | qseecom / mem-buf did not understand msm-5.4 ION buffers |
+| diag #41+ | Zorix A16 | to be tested | qseecom + mem-buf handle ION buffers | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
