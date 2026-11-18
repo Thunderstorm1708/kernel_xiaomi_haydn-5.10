@@ -251,6 +251,14 @@ Notes:
   `dsi_display_bind`. `dsi_display_register_te_irq()` no longer requests it;
   ESD falls back to non-TE checking (found by xiaomi-lahaina-devs).
 
+### GPU
+
+* msm-5.10 kgsl loads `a660_zap` itself (`qcom_mdt_load` into the `zap-shader`
+  child's `memory-region`, then `qcom_scm_pas_auth_and_reset(13)`); the 5.4 DT
+  only had the `qcom,kgsl-hyp` PIL node. `&msm_gpu { zap-shader { memory-region =
+  <&pil_gpu_mem>; }; }` added. Without it the GPU never starts and SurfaceFlinger
+  aborts in a loop.
+
 ### Audio (`techpack/audio`, ASoC core)
 
 * `CONFIG_AUDIO_QGKI` carries the msm-5.4 core extensions. ASoC falls back to
@@ -305,6 +313,9 @@ Notes:
   is enough.
 * msm-5.10 `cnss2` and `cnss_plat_ipc_qmi_svc` require a node with the
   `qcom,wlan` property; the lahaina cnss node now has it.
+* logcat while adb is down: diag builds include `logcap` (from
+  xiaomi-lahaina-devs), which copies errors/crashes and key tags into the kernel
+  log so bootlog stores them in logdump.
 * Debugging: boot with `printk.devkmsg=on`, otherwise `/dev/kmsg` rate limiting
   drops init's own error lines. Read them from logdump:
   `dd if=/dev/block/by-name/logdump bs=1M count=64 | tr -d '\000' | grep -a init:`.
@@ -366,7 +377,8 @@ instead:
 | diag #35 | Zorix A16 | logdump: `cnss_plat_ipc_qmi_svc: module init failed: -19` → `init: Failed to load kernel modules` → `InitFatalReboot` | boots with `printk.devkmsg=on`; kernel logs failing module inits |
 | diag #38 | Zorix A16 | all vendor_boot modules up to msm_drm load; DSI ctrl0/1 probe; **hard freeze at 20.35 s** while dsi-display-primary probes (no further output, logger stopped too) | TE GPIO request hang (below) |
 | diag #40 | Zorix A16 | **Android second stage init runs** (system/vendor mounted, logd, servicemanager, keystore2...). Stuck from ~61 s: init blocked in `vdc cryptfs mountFstab`; vold waits for keystore2, keymaster never registers. qseecomd listener registration fails (`mem_buf_dma_buf_copy_vmperm -22`) | qseecom / mem-buf did not understand msm-5.4 ION buffers |
-| diag #41+ | Zorix A16 | to be tested | qseecom + mem-buf handle ION buffers | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #43 | Zorix A16 | **data unlocks**; zygote, system_server, audio/camera/wifi services start. SurfaceFlinger aborts at start (17×) → zygote loop; after ~180 s SLPI crashes (glink assertion) and SSR level SYSTEM resets the SoC | kgsl `zap-shader node not found` |
+| diag #44+ | Zorix A16 | to be tested | `zap-shader` node on kgsl-3d0 → pil_gpu_mem; logcap (logcat in logdump) | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
