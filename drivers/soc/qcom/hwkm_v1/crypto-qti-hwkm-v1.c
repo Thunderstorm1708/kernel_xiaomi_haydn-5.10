@@ -217,6 +217,16 @@ int crypto_qti_invalidate_key(const struct ice_mmio_data *mmio_data,
 {
 	int err = 0;
 
+	/*
+	 * msm-5.10 UFS evicts every keyslot at init, before any key has been
+	 * programmed. HWKM v1 is only brought up (ICE slave mmio, TP key) on
+	 * the first key programming, so there is nothing to clear yet and the
+	 * HWKM ICE slave is not mapped: touching it oopses in
+	 * qti_hwkm_run_transaction().
+	 */
+	if ((hwkm_v1_flags & QTI_HWKM_INIT_DONE) != QTI_HWKM_INIT_DONE)
+		return 0;
+
 	err = qti_hwkm_clocks(true);
 	if (err) {
 		pr_err("%s: Error enabling clocks %d\n", __func__, err);
