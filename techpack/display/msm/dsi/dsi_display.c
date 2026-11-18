@@ -412,7 +412,7 @@ end:
 	dsi_panel_release_panel_lock(display->panel);
 }
 
-static irqreturn_t dsi_display_panel_te_irq_handler(int irq, void *data)
+static irqreturn_t __maybe_unused dsi_display_panel_te_irq_handler(int irq, void *data)
 {
 	struct dsi_display *display = (struct dsi_display *)data;
 
@@ -477,24 +477,17 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	}
 
 	init_completion(&display->esd_te_gate);
-	te_irq = gpio_to_irq(display->disp_te_gpio);
-
-	/* Avoid deferred spurious irqs with disable_irq() */
-	irq_set_status_flags(te_irq, IRQ_DISABLE_UNLAZY);
-
-	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
-			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-			      "TE_GPIO", display);
-	if (rc) {
-		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
-		irq_clear_status_flags(te_irq, IRQ_DISABLE_UNLAZY);
-		goto error;
-	}
-
-	disable_irq(te_irq);
+	/*
+	 * haydn/lahaina on msm-5.10: requesting the TE GPIO (GPIO 82, PDC 140)
+	 * as an interrupt re-muxes it away from mdp_vsync and hangs the SoC
+	 * inside devm_request_irq() during display probe. Keep GPIO 82 in
+	 * mdp_vsync mode and fall back to non-TE ESD checking.
+	 * Found by xiaomi-lahaina-devs/5.10-sm8350-H (Saffron).
+	 */
+	(void)te_irq;
 	display->is_te_irq_enabled = false;
-
-	return;
+	rc = -EOPNOTSUPP;
+	goto error;
 
 error:
 	/* disable the TE based ESD check */
