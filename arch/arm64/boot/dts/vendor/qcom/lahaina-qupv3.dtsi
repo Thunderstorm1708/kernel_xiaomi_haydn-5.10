@@ -29,6 +29,10 @@
 	qupv3_0: qcom,qupv3_0_geni_se@9c0000 {
 		compatible = "qcom,qupv3-geni-se";
 		reg = <0x9c0000 0x2000>;
+		/* msm-5.10 msm-geni-se looks the paths up by name */
+		interconnect-names = "qup-core", "qup-ddr";
+		interconnects = <&clk_virt MASTER_QUP_CORE_0 &clk_virt SLAVE_QUP_CORE_0>,
+				<&aggre2_noc MASTER_QUP_0 &mc_virt SLAVE_EBI1>;
 		qcom,msm-bus,num-paths = <2>;
 		qcom,msm-bus,vectors-bus-ids =
 			<MASTER_QUP_CORE_0 SLAVE_QUP_CORE_0>,
@@ -420,6 +424,10 @@
 	qupv3_1: qcom,qupv3_1_geni_se@ac0000 {
 		compatible = "qcom,qupv3-geni-se";
 		reg = <0xac0000 0x2000>;
+		/* msm-5.10 msm-geni-se looks the paths up by name */
+		interconnect-names = "qup-core", "qup-ddr";
+		interconnects = <&clk_virt MASTER_QUP_CORE_1 &clk_virt SLAVE_QUP_CORE_1>,
+				<&aggre1_noc MASTER_QUP_1 &mc_virt SLAVE_EBI1>;
 		qcom,msm-bus,num-paths = <2>;
 		qcom,msm-bus,vectors-bus-ids =
 			<MASTER_QUP_CORE_1 SLAVE_QUP_CORE_1>,
@@ -759,6 +767,10 @@
 	qupv3_2: qcom,qupv3_2_geni_se@8c0000 {
 		compatible = "qcom,qupv3-geni-se";
 		reg = <0x8c0000 0x2000>;
+		/* msm-5.10 msm-geni-se looks the paths up by name */
+		interconnect-names = "qup-core", "qup-ddr";
+		interconnects = <&clk_virt MASTER_QUP_CORE_2 &clk_virt SLAVE_QUP_CORE_2>,
+				<&aggre2_noc MASTER_QUP_2 &mc_virt SLAVE_EBI1>;
 		qcom,msm-bus,num-paths = <2>;
 		qcom,msm-bus,vectors-bus-ids =
 			<MASTER_QUP_CORE_2 SLAVE_QUP_CORE_2>,
