@@ -271,6 +271,18 @@ Notes:
   display stream (MDSS, SID 0x820) is cut the moment apps-smmu probes. apps_smmu
   now lists `<0x820 0x0>, <0x800 0x0>`.
 
+### First stage modules
+
+* Android first stage init treats **any** module in `modules.load` that fails to
+  insmod as fatal (`Failed to load kernel modules` → `InitFatalReboot` → reboot to
+  bootloader). A module whose init returns `-ENODEV` because its DT node is missing
+  is enough.
+* msm-5.10 `cnss2` and `cnss_plat_ipc_qmi_svc` require a node with the
+  `qcom,wlan` property; the lahaina cnss node now has it.
+* Debugging: boot with `printk.devkmsg=on`, otherwise `/dev/kmsg` rate limiting
+  drops init's own error lines. Read them from logdump:
+  `dd if=/dev/block/by-name/logdump bs=1M count=64 | tr -d '\000' | grep -a init:`.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -324,7 +336,9 @@ instead:
 | diag #26 | Zorix A16 | **RSC fix works**: rsc, all rpmh regulators, rpmhclk, gcc, NoC, bcm-voters bound (47 deferred, 4 roots). Still no UFS; first stage init gives up and `reboot: Restarting system with command 'bootloader'` at ~30 s → fastboot | roots `15000000.apps-smmu`, `3da0000.kgsl-smmu` (no reason): msm-5.10 arm-smmu waits for `qcom,iommu-dma`, which the 5.4 DT lacks |
 | diag #28 | Zorix A16 | SMMUs now probe (`arm-smmu 3da0000.kgsl-smmu: stream matching with 60 register groups` at ~5 s); right after, the screen goes **black** (splash scanout cut), Mi logo after ~100 s, loops | msm-5.10 arm-smmu only hands off SMRs listed in `qcom,handoff-smrs`; 5.4 DT has none, so the MDSS stream lost its mapping |
 | diag #29 | Zorix A16 | screen stays on past the SMMU probe; **UFS now probes** and panics at ~7.6 s: `qti_hwkm_run_transaction` ← `crypto_qti_invalidate_key` ← `ufshcd_crypto_qti_keyslot_evict` ← `ufshcd_init_crypto` ← `ufs_qcom_probe` | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
-| diag #31 | Zorix A16 | to be tested | hwkm_v1: keyslot evict is a no-op until HWKM has been initialised |
+| diag #31 | Zorix A16 | no panic; all built-in devices bind (`defer: 0`), UFS LUNs sda–sdf found, bootlog writes to logdump (sda24). First stage init loads 14 vendor_boot modules, then `reboot bootloader` at 33.9 s | init's own messages were rate limited away |
+| diag #35 | Zorix A16 | logdump: `cnss_plat_ipc_qmi_svc: module init failed: -19` → `init: Failed to load kernel modules` → `InitFatalReboot` | boots with `printk.devkmsg=on`; kernel logs failing module inits |
+| diag #36 | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
