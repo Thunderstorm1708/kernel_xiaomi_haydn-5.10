@@ -255,7 +255,7 @@ void haydn_bootlog_before_init(void)
 
 	pr_info("bootlog: ===== before /init: devices still waiting =====\n");
 	driver_deferred_probe_dump();
-	for (i = 20; i > 0; i -= 5) {
+	for (i = 5; i > 0; i -= 5) {
 		pr_info("bootlog: ===== holding %d s for photos =====\n", i);
 		ssleep(5);
 	}
