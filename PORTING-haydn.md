@@ -271,6 +271,14 @@ Notes:
   display stream (MDSS, SID 0x820) is cut the moment apps-smmu probes. apps_smmu
   now lists `<0x820 0x0>, <0x800 0x0>`.
 
+### QUPv3 (GENI SPI/I2C/UART)
+
+* msm-5.10 `msm-geni-se` looks up its paths with `of_icc_get("qup-core")` and
+  `("qup-ddr")`; the 5.4 DT only had msm-bus vectors, so all GENI controllers
+  failed `geni_se_resources_init` with `-ENOENT` (touch SPI, cs35l41 I2C, ...).
+  The three wrappers now carry `interconnects`/`interconnect-names` (core on
+  `clk_virt`, QUP1 on `aggre1_noc`, QUP0/2 on `aggre2_noc`, DDR on `mc_virt`).
+
 ### First stage modules
 
 * Android first stage init treats **any** module in `modules.load` that fails to
@@ -338,7 +346,7 @@ instead:
 | diag #29 | Zorix A16 | screen stays on past the SMMU probe; **UFS now probes** and panics at ~7.6 s: `qti_hwkm_run_transaction` ← `crypto_qti_invalidate_key` ← `ufshcd_crypto_qti_keyslot_evict` ← `ufshcd_init_crypto` ← `ufs_qcom_probe` | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
 | diag #31 | Zorix A16 | no panic; all built-in devices bind (`defer: 0`), UFS LUNs sda–sdf found, bootlog writes to logdump (sda24). First stage init loads 14 vendor_boot modules, then `reboot bootloader` at 33.9 s | init's own messages were rate limited away |
 | diag #35 | Zorix A16 | logdump: `cnss_plat_ipc_qmi_svc: module init failed: -19` → `init: Failed to load kernel modules` → `InitFatalReboot` | boots with `printk.devkmsg=on`; kernel logs failing module inits |
-| diag #36 | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node |
+| diag #37 | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
