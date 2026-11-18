@@ -233,6 +233,11 @@ Notes:
   bootloader handoff. Return 0 if `iommu_iova_to_phys` already resolves it, and
   treat -EEXIST as success.
 
+* TE: requesting the panel TE GPIO (82, PDC 140) as an IRQ re-muxes it away
+  from `mdp_vsync` and hangs the SoC in `devm_request_irq()` during
+  `dsi_display_bind`. `dsi_display_register_te_irq()` no longer requests it;
+  ESD falls back to non-TE checking (found by xiaomi-lahaina-devs).
+
 ### Audio (`techpack/audio`, ASoC core)
 
 * `CONFIG_AUDIO_QGKI` carries the msm-5.4 core extensions. ASoC falls back to
@@ -346,7 +351,8 @@ instead:
 | diag #29 | Zorix A16 | screen stays on past the SMMU probe; **UFS now probes** and panics at ~7.6 s: `qti_hwkm_run_transaction` ← `crypto_qti_invalidate_key` ← `ufshcd_crypto_qti_keyslot_evict` ← `ufshcd_init_crypto` ← `ufs_qcom_probe` | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
 | diag #31 | Zorix A16 | no panic; all built-in devices bind (`defer: 0`), UFS LUNs sda–sdf found, bootlog writes to logdump (sda24). First stage init loads 14 vendor_boot modules, then `reboot bootloader` at 33.9 s | init's own messages were rate limited away |
 | diag #35 | Zorix A16 | logdump: `cnss_plat_ipc_qmi_svc: module init failed: -19` → `init: Failed to load kernel modules` → `InitFatalReboot` | boots with `printk.devkmsg=on`; kernel logs failing module inits |
-| diag #38 | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #38 | Zorix A16 | all vendor_boot modules up to msm_drm load; DSI ctrl0/1 probe; **hard freeze at 20.35 s** while dsi-display-primary probes (no further output, logger stopped too) | TE GPIO request hang (below) |
+| diag #39+ | Zorix A16 | to be tested | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
