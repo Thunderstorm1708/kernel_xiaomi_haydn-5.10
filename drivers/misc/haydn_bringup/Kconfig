@@ -6,3 +6,10 @@ config HAYDN_BOOTLOG
 	  Keep the kernel log of each boot on the logdump partition (16 MiB,
 	  two most recent boots alternate) so failed boots can be read back from
 	  recovery. Bring-up only.
+
+config HAYDN_LOGCAP
+	bool "haydn bring-up: mirror Android logd writes into the kernel log"
+	depends on KPROBES && UNIX && PRINTK
+	help
+	  Copy crash/error and selected-tag logcat lines (at KERN_DEBUG) into
+	  the kernel log so bootlog keeps them in logdump. Bring-up only.
