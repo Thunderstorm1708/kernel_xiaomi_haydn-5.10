@@ -5354,6 +5354,8 @@
 
 	wlan: qcom,cnss-qca6490@b0000000 {
 		compatible = "qcom,cnss-qca6490";
+		/* msm-5.10 cnss2 / cnss_plat_ipc_qmi_svc refuse to load without it */
+		qcom,wlan;
 		reg = <0xb0000000 0x10000>,
 		      <0xb2e5510 0x690>;
 		reg-names = "smmu_iova_ipa", "tcs_cmd";
