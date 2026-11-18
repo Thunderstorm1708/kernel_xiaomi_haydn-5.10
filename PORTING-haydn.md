@@ -277,7 +277,9 @@ Notes:
 * TSENS: the msm `qcom,tsens24xx` driver is built (lahaina DT).
 * FBE: lahaina has no TME, so `drivers/soc/qcom/hwkm_v1` brings the msm-5.4 HWKM v1
   backend (kernel programmed HWKM master, `qcom,hwkm` node) behind the msm-5.10
-  crypto-qti API (`CONFIG_QTI_HW_KEY_MANAGER_V1`).
+  crypto-qti API (`CONFIG_QTI_HW_KEY_MANAGER_V1`). HWKM v1 only maps its ICE
+  slave on the first key programming; msm-5.10 UFS evicts all keyslots at
+  probe, so `crypto_qti_invalidate_key()` returns 0 until HWKM init is done.
 * ramoops: `haydn-sm8350.dtsi` adds the shipping 5.4 carve-out (8 MiB at
   `0xb0000000`, record/console/ftrace/pmsg 2 MiB each, `max-reason=4`), which matches the
   ROM's dtb.
@@ -321,7 +323,8 @@ instead:
 | diag #24 | Zorix A16 | reaches `/init` hold, runs ~1:45, then fastboot. `key:` lines: cmd-db bound, **`18200000.rsc` and `af20000.rsc` exist but no driver**; all rpmh regulators/rpmhclk/bcm-voter never created; gcc, SMMU, NoC, UFS unbound (119 deferred, 29 roots) | **root cause**: msm-5.10 `rpmh-rsc` needs 5 `qcom,tcs-config` pairs (`FAST_PATH_TCS` added), 5.4 DT has 4 → `-EINVAL` before the console is up |
 | diag #26 | Zorix A16 | **RSC fix works**: rsc, all rpmh regulators, rpmhclk, gcc, NoC, bcm-voters bound (47 deferred, 4 roots). Still no UFS; first stage init gives up and `reboot: Restarting system with command 'bootloader'` at ~30 s → fastboot | roots `15000000.apps-smmu`, `3da0000.kgsl-smmu` (no reason): msm-5.10 arm-smmu waits for `qcom,iommu-dma`, which the 5.4 DT lacks |
 | diag #28 | Zorix A16 | SMMUs now probe (`arm-smmu 3da0000.kgsl-smmu: stream matching with 60 register groups` at ~5 s); right after, the screen goes **black** (splash scanout cut), Mi logo after ~100 s, loops | msm-5.10 arm-smmu only hands off SMRs listed in `qcom,handoff-smrs`; 5.4 DT has none, so the MDSS stream lost its mapping |
-| diag #30 | Zorix A16 | to be tested | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
+| diag #29 | Zorix A16 | screen stays on past the SMMU probe; **UFS now probes** and panics at ~7.6 s: `qti_hwkm_run_transaction` ← `crypto_qti_invalidate_key` ← `ufshcd_crypto_qti_keyslot_evict` ← `ufshcd_init_crypto` ← `ufs_qcom_probe` | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
+| diag #31 | Zorix A16 | to be tested | hwkm_v1: keyslot evict is a no-op until HWKM has been initialised |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
