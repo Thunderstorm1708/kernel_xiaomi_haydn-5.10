@@ -3754,6 +3754,7 @@ static noinline int do_init_module(struct module *mod)
 	if (mod->init != NULL)
 		ret = do_one_initcall(mod->init);
 	if (ret < 0) {
+		pr_err("%s: module init failed: %d\n", mod->name, ret);
 		goto fail_free_freeinit;
 	}
 	if (ret > 0) {
