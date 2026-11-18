@@ -23,6 +23,7 @@
 #include <linux/dma-buf.h>
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
+#include <soc/qcom/secure_buffer.h>
 #include <linux/types.h>
 #include <linux/clk.h>
 #include <linux/qseecom.h>
@@ -1260,6 +1261,62 @@ static int qseecom_destroy_bridge_callback(void *dtor_data)
 	return ret;
 }
 
+/*
+ * lahaina userspace (qseecomd, keymaster) allocates its buffers from the
+ * msm-5.4 ION heaps, which are not mem-buf buffers: decide from the ION
+ * flags as msm-5.4 did. Only secure, contiguous buffers need a bridge.
+ */
+static int qseecom_create_bridge_for_ion_secbuf(int ion_fd,
+				struct dma_buf *dmabuf, struct sg_table *sgt)
+{
+	unsigned long dma_buf_flags = 0;
+	uint32_t *vmid_list, *perms_list;
+	uint32_t nelems, i;
+	uint64_t handle = 0;
+	phys_addr_t phys;
+	int ret;
+
+	ret = dma_buf_get_flags(dmabuf, &dma_buf_flags);
+	if (ret) {
+		pr_err("failed to get dmabuf flag for fd %d\n", ion_fd);
+		return ret;
+	}
+	if (!(dma_buf_flags & ION_FLAG_SECURE) || sgt->nents != 1)
+		return 0;
+
+	phys = sg_phys(sgt->sgl);
+	if (qtee_shmbridge_query(phys))
+		return 0;
+
+	nelems = ion_get_flags_num_vm_elems(dma_buf_flags);
+	if (!nelems)
+		return -EINVAL;
+	vmid_list = kcalloc(nelems, sizeof(*vmid_list), GFP_KERNEL);
+	perms_list = kcalloc(nelems, sizeof(*perms_list), GFP_KERNEL);
+	if (!vmid_list || !perms_list) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = ion_populate_vm_list(dma_buf_flags, vmid_list, nelems);
+	if (ret)
+		goto out;
+	for (i = 0; i < nelems; i++)
+		perms_list[i] = msm_secure_get_vmid_perms(vmid_list[i]);
+
+	/* no dma-buf destructor hook for ION buffers: the bridge stays registered */
+	ret = qtee_shmbridge_register(phys, sgt->sgl->length, vmid_list,
+				      perms_list, nelems, PERM_READ | PERM_WRITE,
+				      &handle);
+	if (ret == -EEXIST)
+		ret = 0;
+	if (ret)
+		pr_err("creation of shm bridge failed with ret: %d\n", ret);
+out:
+	kfree(perms_list);
+	kfree(vmid_list);
+	return ret;
+}
+
 static int qseecom_create_bridge_for_secbuf(int ion_fd, struct dma_buf *dmabuf,
 				struct sg_table *sgt)
 {
@@ -1278,6 +1335,9 @@ static int qseecom_create_bridge_for_secbuf(int ion_fd, struct dma_buf *dmabuf,
 
 	phys = sg_phys(sg);
 	size = sg->length;
+
+	if (IS_ERR(to_mem_buf_vmperm(dmabuf)))
+		return qseecom_create_bridge_for_ion_secbuf(ion_fd, dmabuf, sgt);
 
 	ret = qtee_shmbridge_query(phys);
 	if (ret) {
