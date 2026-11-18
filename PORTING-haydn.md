@@ -266,6 +266,10 @@ Notes:
   (`compatible = "qcom,iommu-dma"`, `memory-region` = the `linux,cma-default`
   pool, not dma-coherent) has probed. lahaina 5.4 DT had no such node; it is
   added under `&soc` and the CMA pool got the label `system_cma`.
+* msm-5.4 arm-smmu handed off every SMR the bootloader left programmed;
+  msm-5.10 hands off only those in `qcom,handoff-smrs`. Without it the splash
+  display stream (MDSS, SID 0x820) is cut the moment apps-smmu probes. apps_smmu
+  now lists `<0x820 0x0>, <0x800 0x0>`.
 
 ### Other
 
@@ -316,7 +320,8 @@ instead:
 | diag #23 | Zorix A16 | recovery-mode boot shows 128 devices deferred, chains end at `100000.qcom,gcc`, `rpmh-regulator-*`, `qcom,rpmhclk` | dump only roots next |
 | diag #24 | Zorix A16 | reaches `/init` hold, runs ~1:45, then fastboot. `key:` lines: cmd-db bound, **`18200000.rsc` and `af20000.rsc` exist but no driver**; all rpmh regulators/rpmhclk/bcm-voter never created; gcc, SMMU, NoC, UFS unbound (119 deferred, 29 roots) | **root cause**: msm-5.10 `rpmh-rsc` needs 5 `qcom,tcs-config` pairs (`FAST_PATH_TCS` added), 5.4 DT has 4 → `-EINVAL` before the console is up |
 | diag #26 | Zorix A16 | **RSC fix works**: rsc, all rpmh regulators, rpmhclk, gcc, NoC, bcm-voters bound (47 deferred, 4 roots). Still no UFS; first stage init gives up and `reboot: Restarting system with command 'bootloader'` at ~30 s → fastboot | roots `15000000.apps-smmu`, `3da0000.kgsl-smmu` (no reason): msm-5.10 arm-smmu waits for `qcom,iommu-dma`, which the 5.4 DT lacks |
-| diag #28 | Zorix A16 | to be tested | `qcom,iommu-dma` node (memory-region = linux,cma-default) |
+| diag #28 | Zorix A16 | SMMUs now probe (`arm-smmu 3da0000.kgsl-smmu: stream matching with 60 register groups` at ~5 s); right after, the screen goes **black** (splash scanout cut), Mi logo after ~100 s, loops | msm-5.10 arm-smmu only hands off SMRs listed in `qcom,handoff-smrs`; 5.4 DT has none, so the MDSS stream lost its mapping |
+| diag #30 | Zorix A16 | to be tested | `qcom,handoff-smrs = <0x820 0x0>, <0x800 0x0>` on apps_smmu; diag also boots with `arm-smmu.disable_bypass=0` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
