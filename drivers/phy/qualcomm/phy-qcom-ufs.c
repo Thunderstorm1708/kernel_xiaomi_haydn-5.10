@@ -644,7 +644,7 @@ void ufs_qcom_phy_set_src_clk_h8_enter(struct phy *generic_phy)
 
 	if (!ufs_qcom_phy->rx_sym0_mux_clk || !ufs_qcom_phy->rx_sym1_mux_clk ||
 		!ufs_qcom_phy->tx_sym0_mux_clk || !ufs_qcom_phy->ref_clk_src) {
-		dev_err(ufs_qcom_phy->dev, "%s: null clock\n", __func__);
+		dev_dbg(ufs_qcom_phy->dev, "%s: null clock\n", __func__);
 		return;
 	}
 
@@ -669,7 +669,7 @@ void ufs_qcom_phy_set_src_clk_h8_exit(struct phy *generic_phy)
 		!ufs_qcom_phy->rx_sym0_phy_clk ||
 		!ufs_qcom_phy->rx_sym1_phy_clk ||
 		!ufs_qcom_phy->tx_sym0_phy_clk) {
-		dev_err(ufs_qcom_phy->dev, "%s: null clock\n", __func__);
+		dev_dbg(ufs_qcom_phy->dev, "%s: null clock\n", __func__);
 		return;
 	}
 
