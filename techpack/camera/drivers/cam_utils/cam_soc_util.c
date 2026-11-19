@@ -1439,7 +1439,7 @@ int cam_soc_util_regulator_disable(struct regulator *rgltr,
 	rc = regulator_disable(rgltr);
 	if (rc) {
 		CAM_ERR(CAM_UTIL, "%s regulator disable failed", rgltr_name);
-		return rc;
+		/* still drop this consumer's voltage/load vote below */
 	}
 
 	if (rgltr_delay_ms > 20)
@@ -1453,9 +1453,16 @@ int cam_soc_util_regulator_disable(struct regulator *rgltr,
 			usleep_range(1000,2000);
 	}
 
+	/*
+	 * Release the vote completely. A (0, max) vote still caps the rail at
+	 * max for every other consumer: on haydn the rear sensor has two
+	 * supplies on pm8008i_l7 (cam_vana 2.904 V and cam_v_custom2 2.8 V),
+	 * and the leftover 2.8 V cap made the next cam_vana enable fail with
+	 * "Restricting voltage, 2904000-2800000uV".
+	 */
 	if (regulator_count_voltages(rgltr) > 0) {
 		regulator_set_load(rgltr, 0);
-		regulator_set_voltage(rgltr, 0, rgltr_max_volt);
+		regulator_set_voltage(rgltr, 0, INT_MAX);
 	}
 
 	return rc;
