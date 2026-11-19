@@ -392,6 +392,25 @@ Notes:
   still caps the rail for other consumers; the rear sensor's cam_vana
   (2.904 V) and cam_v_custom2 (2.8 V) share pm8008i_l7.
 
+### devfreq (CPU-L3 / LLCC / DDR scaling)
+
+* The lahaina DT's `qcom,devfreq-icc*` nodes ask for the msm-5.4 governors
+  `mem_latency` (15 nodes), `compute` (3) and `bw_hwmon` (3). None were built,
+  so every one failed with `Unable to find governor` and L3/LLCC/DDR votes
+  never followed CPU load (stutter, and no power saving).
+* Diag build #73 enables `ARM_MEMLAT_MON` + `DEVFREQ_GOV_MEMLAT`
+  (mem_latency, compute):
+  * `arm-memlat-mon.c`: msm-5.4's idle notifier chain (`IDLE_START`/`IDLE_END`,
+    `idle_notifier_register`) is gone; it now hooks
+    `android_vh_cpu_idle_enter/exit`.
+  * `governor_memlat.c`: devfreq has no `min_freq`/`max_freq` on 5.10 (start
+    just calls `update_devfreq()`); the memlat trace events are stubbed.
+* `bw_hwmon` (`QCOM_BIMC_BWMON`, `DEVFREQ_GOV_QCOM_BW_HWMON`) still needs its
+  trace events and the min/max_freq uses ported.
+* Heat note for testers: the diag cmdline has `clk_ignore_unused
+  pd_ignore_unused`, which keeps every unused clock and power domain on.
+  The normal build does not.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -468,7 +487,8 @@ instead:
 | diag #66 | Zorix A16 | built, not flashed | GPU without LLCC slices (`msm_kgsl.gpu_llcc=0`, diag only) |
 | diag #61 (Wi-Fi on) | Zorix A16 | ran ~25 min with Wi-Fi on, then hung on the first screen-off system suspend (log ends at `__wlan_hdd_bus_suspend: starting bus suspend`); reset when the power key was pressed. Sound still dead (`qcom,wcn-bt` links still added). All SLPI sensors missing except proximity; YouTube frames black/green | see WLAN, Audio |
 | diag #68 | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped; GPU without LLCC slices |
-| diag #70+ | Zorix A16 | to be tested | SLPI sensors PD for fastrpc; camera regulator votes released | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #70 | Zorix A16 | built | SLPI sensors PD for fastrpc; camera regulator votes released |
+| diag #73 | Zorix A16 | to be tested (if it does not boot, use #70) | + mem_latency/compute devfreq governors (diag only) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
