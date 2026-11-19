@@ -313,6 +313,16 @@ Notes:
   same card). BT call/A2DP-offload audio comes back when the slimbus NGD
   is ported.
 
+### GPU I/O coherency
+
+* `msm_kgsl.gpu_iocoherent` (default 0 on haydn): `KGSL_MMU_IO_COHERENT` is
+  only set when it is 1. With coherent mappings (`IOMMU_CACHE` on the
+  `dma-coherent` kgsl SMMU, `CONFIG_QCOM_KGSL_IOCOHERENCY_DEFAULT=y`), build
+  #52 drew UI text with random glyphs missing. The `WARN_ONCE` in
+  `kgsl_sharedmem.c` for "coherency default but not supported" is dropped.
+  To do: compare the 5.10 io-pgtable attributes for `IOMMU_CACHE` on the kgsl
+  context banks with 5.4, then turn coherency back on.
+
 ### RPMh
 
 * msm-5.10 `rpmh-rsc` has five TCS types (`FAST_PATH_TCS` = 4) and requires
@@ -393,7 +403,7 @@ instead:
      screen only). With `loglevel=7` fbcon drew every info line, which slowed
      the boot animation and turned any WARN into a multi-second stall. bootlog
      reads the log buffer through `kmsg_dump`, so logdump still gets every line.
-   * The bootlog buffer is 16 MiB. Since build #59 it never stops: once full,
+   * The bootlog buffer is 16 MiB. Since build #60 it never stops: once full,
      the first quarter (the boot) is kept and the rest wraps as a ring
      (`bootlog: ===== ring wrapped =====`). In a dump, the newest lines are
      the ones just before the point where timestamps jump back.
@@ -437,7 +447,8 @@ instead:
 | diag #50 | Zorix A16 | **boots to the lock screen** (unlock works, modem registers on the network). Boot 1: opening Settings → hard reset at ~138 s. Boot 2: lock screen frozen (no touch, power key dead), then `WLAN Panic ... Scheduler Watchdog Bite` → `Kernel panic - Fatal exception in interrupt` at 175 s | every display buffer free hits `WARN_ON(!mutex_is_locked(&dev->struct_mutex))` in `msm_gem_free_object`; each WARN dumps a full backtrace + module list through fbcon, which takes seconds per trace with the console lock held. The composer's HwBinder thread (RT) ran 10 s inside printk → RT throttling, the WLAN scheduler watchdog fired its 10 s BUG, and the system froze |
 | diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | confirmed WLAN: same build ran 20 min with Wi-Fi off (no freeze), froze again within minutes after turning Wi-Fi on. Freeze not in logdump: the 16 MiB bootlog buffer filled at ~1038 s |
 | diag #57 | Zorix A16 | built, not flashed | sound card without BT/FM slimbus links; `haydn-key:` power key logging |
-| diag #59+ | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #60 | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer |
+| diag #62+ | Zorix A16 | to be tested | GPU I/O coherency off (`msm_kgsl.gpu_iocoherent=0`) for the missing-text bug | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
