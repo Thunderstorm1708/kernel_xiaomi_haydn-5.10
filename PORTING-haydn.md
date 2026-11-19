@@ -438,7 +438,8 @@ instead:
 | diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | confirmed WLAN: same build ran 20 min with Wi-Fi off (no freeze), froze again within minutes after turning Wi-Fi on. Freeze not in logdump: the 16 MiB bootlog buffer filled at ~1038 s |
 | diag #57 | Zorix A16 | built, not flashed | sound card without BT/FM slimbus links; `haydn-key:` power key logging |
 | diag #60 | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer |
-| diag #61 | Zorix A16 | no freeze so far with Wi-Fi on. UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #61 | Zorix A16 | no freeze so far with Wi-Fi on. UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards |
+| diag #63+ | Zorix A16 | to be tested | GPU without LLCC slices (`msm_kgsl.gpu_llcc=0`, diag only) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -471,10 +472,20 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   * Text randomly missing across the UI (glyphs blank, icons fine). It comes
     back after a theme switch (all UI caches rebuilt) and goes again after a
     few minutes. Not GPU I/O coherency: #61 with coherency off behaved the
-    same. kgsl process reclaim is not built for haydn. Next: check for
-    kgsl/ION errors and SurfaceFlinger/HWUI logcat around the time it goes
-    missing.
-  * Launcher swipe-up (app drawer) does not open.
+    same. kgsl process reclaim is not built for haydn. The pattern in app
+    labels: common letters (a, e, l, o, r, s, t...) are blank, rare ones
+    (b, k, p, x, y) and capitals still draw, i.e. the glyphs that went into
+    the atlas first are lost and later ones survive. Data written by the GPU
+    long ago disappears. Suspect: the GPU LLCC slice (5.4 lahaina table, GPU
+    slice `retain_on_pc`, `write_scid_en`) dropping dirty lines. Diag test:
+    `msm_kgsl.gpu_llcc=0` (default in diag only) runs the GPU without
+    GPU/GPUHTW slices. Also `qcom-llcc 9200000.cache-controller: invalid
+    resource` ×3 at boot (5.4 DT has only `llcc_base` and
+    `llcc_broadcast_base`).
+  * App drawer (launcher swipe-up) is open but not drawn while window blurs
+    are on: it takes touches and opens apps. With "Allow window-level blurs"
+    off it draws (text still has the glyph problem). "Disable HW overlays"
+    changes nothing, so SurfaceFlinger GPU composition itself works.
   * Power key: a single press sometimes acts as a double press (camera
     gesture) or a long press (power menu). Diag logs `haydn-key:` lines from
     `qpnp-power-on` for each state change.
