@@ -3238,6 +3238,22 @@ out:
 	return ret;
 }
 
+/*
+ * haydn on 5.10: putting the WLAN PCIe link to sleep hangs the whole SoC
+ * now and then, with no oops or watchdog bark. Build #52: runtime suspend
+ * (WoW + PCIe DRV handoff to the ADSP) froze within minutes with Wi-Fi on,
+ * none in 20 min with it off. Build #61: the first system suspend with
+ * Wi-Fi on (screen off) hung right after "__wlan_hdd_bus_suspend: starting
+ * bus suspend". Keep the link up in both cases until the DRV / link
+ * suspend path is fixed: refuse runtime suspend, and in system suspend vote
+ * "disable power collapse" so only WoW is armed and the link stays in D0.
+ * Costs idle and standby power; cnss2.wlan_pcie_pm=1 restores stock
+ * behaviour.
+ */
+static bool wlan_pcie_pm;
+module_param(wlan_pcie_pm, bool, 0644);
+MODULE_PARM_DESC(wlan_pcie_pm, "Allow WLAN PCIe link suspend (haydn: off)");
+
 static int cnss_pci_suspend(struct device *dev)
 {
 	int ret = 0;
@@ -3254,7 +3270,15 @@ static int cnss_pci_suspend(struct device *dev)
 	if (!cnss_is_device_powered_on(plat_priv))
 		goto out;
 
-	if (!test_bit(DISABLE_DRV, &plat_priv->ctrl_params.quirks) &&
+	if (!READ_ONCE(wlan_pcie_pm) && !pci_priv->disable_pc) {
+		if (!cnss_pci_disable_pc(pci_priv, true)) {
+			pci_priv->disable_pc = true;
+			pr_info("cnss: keeping the PCIe link up across system suspend (cnss2.wlan_pcie_pm=0)\n");
+		}
+	}
+
+	if (!pci_priv->disable_pc &&
+	    !test_bit(DISABLE_DRV, &plat_priv->ctrl_params.quirks) &&
 	    pci_priv->drv_supported) {
 		pci_priv->drv_connected_last =
 			cnss_pci_get_drv_connected(pci_priv);
@@ -3374,17 +3398,6 @@ out:
 	return ret;
 }
 
-/*
- * haydn on 5.10: a WLAN runtime suspend (WoW + PCIe DRV handoff to the ADSP)
- * now and then hangs the whole SoC with no oops or watchdog bark (build
- * #52: freezes within minutes with Wi-Fi on, none in 20 min with it off).
- * Keep the link in D0 until the DRV path is fixed. Costs some idle
- * power; set cnss2.wlan_runtime_pm=1 to test runtime PM again.
- */
-static bool wlan_runtime_pm;
-module_param(wlan_runtime_pm, bool, 0644);
-MODULE_PARM_DESC(wlan_runtime_pm, "Allow WLAN PCIe runtime suspend (haydn: off)");
-
 static int cnss_pci_runtime_suspend(struct device *dev)
 {
 	int ret = 0;
@@ -3408,8 +3421,8 @@ static int cnss_pci_runtime_suspend(struct device *dev)
 		return -EAGAIN;
 	}
 
-	if (!READ_ONCE(wlan_runtime_pm)) {
-		pr_info_once("cnss: WLAN runtime suspend disabled (cnss2.wlan_runtime_pm=0)\n");
+	if (!READ_ONCE(wlan_pcie_pm)) {
+		pr_info_once("cnss: WLAN runtime suspend disabled (cnss2.wlan_pcie_pm=0)\n");
 		return -EAGAIN;
 	}
 
