@@ -304,6 +304,14 @@ Notes:
   name, so a card that is stuck waiting for a component shows which one in the boot log.
 * `lahaina.c`: dev PM QoS uses `PM_QOS_RESUME_LATENCY_NO_CONSTRAINT`
   (`PM_QOS_DEFAULT_VALUE` is gone from the dev PM QoS API).
+* `lahaina.c`: the BT/FM `SLIMBUS_7/8` dai links (`qcom,wcn-btfm`) are left out
+  unless an upstream `qcom,slim-ngd-v1.5.0`/`v2.1.0` node is available. Their
+  codec `btfmslim_slave` sits on the msm `qcom,slim-ngd` controller, which 5.10
+  does not drive, so it never registers and the whole card stayed deferred
+  (build #52: `codec component btfmslim_slave not found for link SLIMBUS_7_RX`,
+  no sound at all, and no ultrasonic proximity either, since that runs over the
+  same card). BT call/A2DP-offload audio comes back when the slimbus NGD
+  is ported.
 
 ### RPMh
 
@@ -439,6 +447,21 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   #17 and #20). After the reset the bootloader boots recovery mode, where only the
   11 recovery modules load and UFS/USB never probe (no `sd*`, no UDC).
 * fastrpc minidump CMA buffer: allocated before `adsprpc-mem` probes.
+* Seen on #52 in daily use (user report):
+  * Camera dead: pm8008 (camera PMIC) does not answer on I2C (`pm8008_read ...
+    -107`, `i2c_geni a94000.i2c: i2c error :-107`), so the sensors get no power;
+    EEPROM reads then time out (-110).
+  * Text randomly missing across the UI (glyphs blank, icons fine). Suspect GPU
+    IO-coherency: CPU-written glyph atlas not seen by the GPU (kgsl-smmu is
+    `dma-coherent`, a660 has `ADRENO_IOCOHERENT`; check the 5.10 page-table
+    attributes for coherent kgsl mappings).
+  * Power key: a single press sometimes acts as a double press (camera
+    gesture) or a long press (power menu). Diag logs `haydn-key:` lines from
+    `qpnp-power-on` for each state change.
+  * Screen wake from the power key takes 3–5 s.
+  * Ultrasonic proximity (in-call screen off) dead: depends on the sound card.
+  * Short UI stutters and warmth: devfreq/bwmon governors missing, ROM Dolby
+    app crash-loop (no audio effects), diag logging.
 * Seen in the #50 logs (after the lock screen, not fatal on their own):
   * `qti_battery_charger_main`: `battery_chg_write()` sleeps in
     `wait_for_completion_timeout()` from `usb_psy_get_prop()` inside an RCU read
