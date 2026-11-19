@@ -1443,6 +1443,14 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 		return ERR_PTR(-ENOMEM);
 
 	subsys->desc = desc;
+#ifdef CONFIG_HAYDN_BOOTLOG
+	/*
+	 * haydn bring-up: restart a crashed DSP on its own instead of
+	 * resetting the SoC, so one subsystem crash doesn't end the boot (and
+	 * the log). The ROM switches levels itself once it's up.
+	 */
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
+#endif
 	subsys->owner = desc->owner;
 	subsys->dev.parent = desc->dev;
 	subsys->dev.bus = &subsys_bus_type;
