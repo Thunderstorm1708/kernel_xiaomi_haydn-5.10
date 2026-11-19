@@ -376,6 +376,22 @@ Notes:
   `msm_pcie_drv_suspend`/resume, the ADSP DRV handshake and the pci-msm link
   suspend, then set `wlan_pcie_pm` back to 1.
 
+### fastrpc (adsprpc) and sensors
+
+* msm-5.10 adsprpc refuses `FASTRPC_INIT_ATTACH_SENSORS` with `-ENOTCONN` until
+  the PD restart (PDR) service reports the sensors PD up, and it only looks
+  a PD up when the DT names it. The 5.4 lahaina DT had only
+  `qcom,fastrpc-adsp-sensors-pdr`; lahaina runs sensors on the SLPI, so
+  `qcom,fastrpc-slpi-sensors-pdr` is added (`msm/slpi/sensor_pd`, `tms/servreg`).
+  Without it sscrpcd loops and the sensor HAL lists 2 sensors (stock 5.4: 41).
+
+### Camera (`techpack/camera`)
+
+* `cam_soc_util_regulator_disable()` releases the voltage vote with
+  `(0, INT_MAX)` and also when `regulator_disable()` fails. A `(0, max)` vote
+  still caps the rail for other consumers; the rear sensor's cam_vana
+  (2.904 V) and cam_v_custom2 (2.8 V) share pm8008i_l7.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -451,7 +467,8 @@ instead:
 | diag #61 | Zorix A16 | UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards |
 | diag #66 | Zorix A16 | built, not flashed | GPU without LLCC slices (`msm_kgsl.gpu_llcc=0`, diag only) |
 | diag #61 (Wi-Fi on) | Zorix A16 | ran ~25 min with Wi-Fi on, then hung on the first screen-off system suspend (log ends at `__wlan_hdd_bus_suspend: starting bus suspend`); reset when the power key was pressed. Sound still dead (`qcom,wcn-bt` links still added). All SLPI sensors missing except proximity; YouTube frames black/green | see WLAN, Audio |
-| diag #67+ | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #68 | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped; GPU without LLCC slices |
+| diag #70+ | Zorix A16 | to be tested | SLPI sensors PD for fastrpc; camera regulator votes released | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -478,9 +495,13 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   11 recovery modules load and UFS/USB never probe (no `sd*`, no UDC).
 * fastrpc minidump CMA buffer: allocated before `adsprpc-mem` probes.
 * Seen on #52 in daily use (user report):
-  * Camera dead: pm8008 (camera PMIC) does not answer on I2C (`pm8008_read ...
-    -107`, `i2c_geni a94000.i2c: i2c error :-107`), so the sensors get no power;
-    EEPROM reads then time out (-110).
+  * Camera dead. The rear sensor (slot 0, id 0x1ad2) probes once, then the
+    next power-up fails: `pm8008i_l7: Restricting voltage, 2904000-2800000uV`
+    → `cam_vana set voltage failed`; CCI reads then time out and power down
+    is unbalanced. cam_vana (2.904 V) and cam_v_custom2 (2.8 V) share
+    pm8008i_l7 and the camera driver left a (0, 2.8 V) vote behind. Fixed in
+    #70+ (see camera below). The `pm8008j@c ... -107` errors are not the
+    cause: haydn's cameras use pm8008i, and pm8008j is not populated.
   * Text randomly missing across the UI (glyphs blank, icons fine). It comes
     back after a theme switch (all UI caches rebuilt) and goes again after a
     few minutes. Not GPU I/O coherency: #61 with coherency off behaved the
@@ -503,8 +524,11 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
     `qpnp-power-on` for each state change.
   * Screen wake (power key or double tap) takes 3–7 s, sometimes needs a
     second try. Going to sleep is quick.
-  * Sensors: only proximity is listed; accelerometer, light, magnetometer,
-    gyroscope and barometer (all on the SLPI sensor hub) are missing.
+  * Sensors: only proximity is listed (2 sensors in the HAL; stock 5.4 lists
+    41); accelerometer, light, magnetometer, gyroscope and barometer (SLPI
+    sensor hub) are missing. Cause: `sscrpcd` could never attach to the SLPI
+    sensors PD (`apps_dev_init failed for domain 2`, ENODEV until the SLPI
+    is up, then ENOTCONN). Fixed in #70+: see fastrpc below.
   * Video: YouTube frames come out black or green (empty NV12 buffers) and the
     quality menu is empty. Same family as the missing text: data written by a
     hardware block is not there when read back.
