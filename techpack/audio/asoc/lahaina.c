@@ -8297,6 +8297,12 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 #endif
 
 		rc = of_property_read_u32(dev->of_node, "qcom,wcn-bt", &val);
+		/* same slimbus NGD dependency as the qcom,wcn-btfm links below */
+		if (!rc && val && !msm_slim_ngd_supported()) {
+			dev_info(dev, "%s: no supported slimbus NGD, skipping WCN BT dai links\n",
+				 __func__);
+			val = 0;
+		}
 		if (!rc && val) {
 			dev_dbg(dev, "%s(): WCN BT support present\n",
 				__func__);
