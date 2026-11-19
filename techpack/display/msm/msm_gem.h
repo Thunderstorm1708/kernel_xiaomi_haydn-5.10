@@ -19,6 +19,7 @@
 #define __MSM_GEM_H__
 
 #include <linux/kref.h>
+#include <linux/llist.h>
 #include <linux/dma-resv.h>
 #include "msm_drv.h"
 
@@ -111,6 +112,9 @@ struct msm_gem_object {
 	 */
 	struct list_head mm_list;
 	struct msm_gpu *gpu;     /* non-null if active */
+
+	/* queued on priv->free_list for deferred free */
+	struct llist_node freed;
 
 	/* Transiently in the process of submit ioctl, objects associated
 	 * with the submit are on submit->bo_list.. this only lasts for
