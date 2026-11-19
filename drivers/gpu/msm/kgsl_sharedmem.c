@@ -783,6 +783,9 @@ void kgsl_memdesc_init(struct kgsl_device *device,
 	/* Disable IO coherence if it is not supported on the chip */
 	if (!kgsl_mmu_has_feature(device, KGSL_MMU_IO_COHERENT)) {
 		flags &= ~((uint64_t) KGSL_MEMFLAGS_IOCOHERENT);
+
+		WARN_ONCE(IS_ENABLED(CONFIG_QCOM_KGSL_IOCOHERENCY_DEFAULT),
+			"I/O coherency is not supported on this target\n");
 	} else if (IS_ENABLED(CONFIG_QCOM_KGSL_IOCOHERENCY_DEFAULT))
 		flags |= KGSL_MEMFLAGS_IOCOHERENT;
 
