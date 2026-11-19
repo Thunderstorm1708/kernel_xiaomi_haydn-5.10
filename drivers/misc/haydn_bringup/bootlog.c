@@ -179,12 +179,39 @@ static struct block_device *find_logdump(void)
 	return bdev;
 }
 
+static void flush(void);
+
+/*
+ * Once the buffer is full, keep the first quarter (the boot) and wrap the
+ * rest as a ring, so a freeze long after boot is still in the log. The
+ * wrap point shows up in the dump as a jump back in the timestamps: the
+ * newest lines are the ones right before that jump.
+ */
+static void wrap(void)
+{
+	static const char mark[] = "\nbootlog: ===== ring wrapped =====\n";
+	size_t start = (max_pages / 4) * PAGE_SIZE;
+
+	if (log_bdev && used > done)
+		flush();
+	used = done = start;
+	memcpy(page_address(pages[used / PAGE_SIZE]), mark, sizeof(mark) - 1);
+	used += sizeof(mark) - 1;
+}
+
 static void append(const char *s, size_t n)
 {
-	while (n && used < max_pages * PAGE_SIZE) {
-		size_t pg = used / PAGE_SIZE, off = used % PAGE_SIZE;
-		size_t k = min(n, PAGE_SIZE - off);
+	while (n) {
+		size_t pg, off, k;
 
+		if (used >= max_pages * PAGE_SIZE) {
+			if (!log_bdev || max_pages < 8)
+				return;
+			wrap();
+		}
+		pg = used / PAGE_SIZE;
+		off = used % PAGE_SIZE;
+		k = min(n, PAGE_SIZE - off);
 		if (!pages[pg]) {
 			pages[pg] = alloc_page(GFP_KERNEL | __GFP_ZERO);
 			if (!pages[pg])
@@ -275,7 +302,7 @@ static int bootlog_thread(void *unused)
 	kmsg_dump_rewind(iter);
 	append(HEADER "00000000\n", HEADER_LEN + SEQ_DIGITS + 1);
 	mutex_unlock(&bootlog_lock);
-	while (!kthread_should_stop() && tick < 600) {
+	while (!kthread_should_stop()) {
 		if (time_after_eq(jiffies, beat)) {
 			beat = jiffies + 2 * HZ;
 			pr_info("bootlog: tick %d\n", tick);
