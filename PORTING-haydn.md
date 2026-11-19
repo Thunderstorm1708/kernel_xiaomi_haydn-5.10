@@ -313,16 +313,6 @@ Notes:
   same card). BT call/A2DP-offload audio comes back when the slimbus NGD
   is ported.
 
-### GPU I/O coherency
-
-* `msm_kgsl.gpu_iocoherent` (default 0 on haydn): `KGSL_MMU_IO_COHERENT` is
-  only set when it is 1. With coherent mappings (`IOMMU_CACHE` on the
-  `dma-coherent` kgsl SMMU, `CONFIG_QCOM_KGSL_IOCOHERENCY_DEFAULT=y`), build
-  #52 drew UI text with random glyphs missing. The `WARN_ONCE` in
-  `kgsl_sharedmem.c` for "coherency default but not supported" is dropped.
-  To do: compare the 5.10 io-pgtable attributes for `IOMMU_CACHE` on the kgsl
-  context banks with 5.4, then turn coherency back on.
-
 ### RPMh
 
 * msm-5.10 `rpmh-rsc` has five TCS types (`FAST_PATH_TCS` = 4) and requires
@@ -448,7 +438,7 @@ instead:
 | diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | confirmed WLAN: same build ran 20 min with Wi-Fi off (no freeze), froze again within minutes after turning Wi-Fi on. Freeze not in logdump: the 16 MiB bootlog buffer filled at ~1038 s |
 | diag #57 | Zorix A16 | built, not flashed | sound card without BT/FM slimbus links; `haydn-key:` power key logging |
 | diag #60 | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer |
-| diag #62+ | Zorix A16 | to be tested | GPU I/O coherency off (`msm_kgsl.gpu_iocoherent=0`) for the missing-text bug | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #61 | Zorix A16 | no freeze so far with Wi-Fi on. UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -478,10 +468,13 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   * Camera dead: pm8008 (camera PMIC) does not answer on I2C (`pm8008_read ...
     -107`, `i2c_geni a94000.i2c: i2c error :-107`), so the sensors get no power;
     EEPROM reads then time out (-110).
-  * Text randomly missing across the UI (glyphs blank, icons fine). Suspect GPU
-    IO-coherency: CPU-written glyph atlas not seen by the GPU (kgsl-smmu is
-    `dma-coherent`, a660 has `ADRENO_IOCOHERENT`; check the 5.10 page-table
-    attributes for coherent kgsl mappings).
+  * Text randomly missing across the UI (glyphs blank, icons fine). It comes
+    back after a theme switch (all UI caches rebuilt) and goes again after a
+    few minutes. Not GPU I/O coherency: #61 with coherency off behaved the
+    same. kgsl process reclaim is not built for haydn. Next: check for
+    kgsl/ION errors and SurfaceFlinger/HWUI logcat around the time it goes
+    missing.
+  * Launcher swipe-up (app drawer) does not open.
   * Power key: a single press sometimes acts as a double press (camera
     gesture) or a long press (power menu). Diag logs `haydn-key:` lines from
     `qpnp-power-on` for each state change.
