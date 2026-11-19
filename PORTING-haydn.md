@@ -304,8 +304,9 @@ Notes:
   name, so a card that is stuck waiting for a component shows which one in the boot log.
 * `lahaina.c`: dev PM QoS uses `PM_QOS_RESUME_LATENCY_NO_CONSTRAINT`
   (`PM_QOS_DEFAULT_VALUE` is gone from the dev PM QoS API).
-* `lahaina.c`: the BT/FM `SLIMBUS_7/8` dai links (`qcom,wcn-btfm`) are left out
-  unless an upstream `qcom,slim-ngd-v1.5.0`/`v2.1.0` node is available. Their
+* `lahaina.c`: the BT/FM `SLIMBUS_7/8` dai links (`qcom,wcn-bt` and
+  `qcom,wcn-btfm`; haydn's overlay uses `qcom,wcn-bt`, so the first fix in #57
+  missed it) are left out unless an upstream `qcom,slim-ngd-v1.5.0`/`v2.1.0` node is available. Their
   codec `btfmslim_slave` sits on the msm `qcom,slim-ngd` controller, which 5.10
   does not drive, so it never registers and the whole card stayed deferred
   (build #52: `codec component btfmslim_slave not found for link SLIMBUS_7_RX`,
@@ -358,13 +359,22 @@ Notes:
 
 ### WLAN (cnss2 / qcacld)
 
-* Runtime PM is off on haydn for now: `cnss_pci_runtime_suspend()` returns
-  `-EAGAIN` unless `cnss2.wlan_runtime_pm=1`. With it on (build #52), a WLAN
-  runtime suspend (qcacld `pmo_core_enable_wow_in_fw`, then the PCIe DRV handoff
-  to the ADSP over the `pcie_drv` glink channel, lahaina DT `qcom,drv-supported`)
-  occasionally hung the whole SoC with no oops, panic or watchdog bark. Next
-  step: trace `msm_pcie_drv_suspend`/resume and the ADSP DRV handshake, then
-  turn runtime PM back on.
+* The WLAN PCIe link is never put to sleep on haydn for now
+  (`cnss2.wlan_pcie_pm=0`):
+  * runtime suspend: `cnss_pci_runtime_suspend()` returns `-EAGAIN`;
+  * system suspend: the first `cnss_pci_suspend()` votes `MSM_PCIE_DISABLE_PC`
+    (`pci_priv->disable_pc`), so only WoW is armed, the link stays in D0 and
+    pci-msm skips its own suspend; the DRV check is skipped.
+* Why: putting the link to sleep hung the whole SoC with no oops, panic or
+  watchdog bark. Build #52: WLAN runtime suspend (qcacld
+  `pmo_core_enable_wow_in_fw`, then the PCIe DRV handoff to the ADSP over the
+  `pcie_drv` glink channel, lahaina DT `qcom,drv-supported`). Build #61 (runtime
+  suspend already off): the first system suspend with Wi-Fi on, right after
+  `__wlan_hdd_bus_suspend: starting bus suspend`; the phone reset on the next
+  power key press.
+* Cost: more idle and standby power. Next step: trace
+  `msm_pcie_drv_suspend`/resume, the ADSP DRV handshake and the pci-msm link
+  suspend, then set `wlan_pcie_pm` back to 1.
 
 ### Other
 
@@ -438,8 +448,10 @@ instead:
 | diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | confirmed WLAN: same build ran 20 min with Wi-Fi off (no freeze), froze again within minutes after turning Wi-Fi on. Freeze not in logdump: the 16 MiB bootlog buffer filled at ~1038 s |
 | diag #57 | Zorix A16 | built, not flashed | sound card without BT/FM slimbus links; `haydn-key:` power key logging |
 | diag #60 | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer |
-| diag #61 | Zorix A16 | no freeze so far with Wi-Fi on. UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards |
-| diag #63+ | Zorix A16 | to be tested | GPU without LLCC slices (`msm_kgsl.gpu_llcc=0`, diag only) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #61 | Zorix A16 | UI text still disappears after a few minutes (QS panel); switching dark/light theme brings it back until it goes again. Power key still misbehaves. Launcher swipe-up (app drawer) does not open | GPU I/O coherency off did **not** help, so it is not the cause; reverted afterwards |
+| diag #66 | Zorix A16 | built, not flashed | GPU without LLCC slices (`msm_kgsl.gpu_llcc=0`, diag only) |
+| diag #61 (Wi-Fi on) | Zorix A16 | ran ~25 min with Wi-Fi on, then hung on the first screen-off system suspend (log ends at `__wlan_hdd_bus_suspend: starting bus suspend`); reset when the power key was pressed. Sound still dead (`qcom,wcn-bt` links still added). All SLPI sensors missing except proximity; YouTube frames black/green | see WLAN, Audio |
+| diag #67+ | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -489,7 +501,13 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   * Power key: a single press sometimes acts as a double press (camera
     gesture) or a long press (power menu). Diag logs `haydn-key:` lines from
     `qpnp-power-on` for each state change.
-  * Screen wake from the power key takes 3–5 s.
+  * Screen wake (power key or double tap) takes 3–7 s, sometimes needs a
+    second try. Going to sleep is quick.
+  * Sensors: only proximity is listed; accelerometer, light, magnetometer,
+    gyroscope and barometer (all on the SLPI sensor hub) are missing.
+  * Video: YouTube frames come out black or green (empty NV12 buffers) and the
+    quality menu is empty. Same family as the missing text: data written by a
+    hardware block is not there when read back.
   * Ultrasonic proximity (in-call screen off) dead: depends on the sound card.
   * Short UI stutters and warmth: devfreq/bwmon governors missing, ROM Dolby
     app crash-loop (no audio effects), diag logging.
