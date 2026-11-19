@@ -3374,6 +3374,17 @@ out:
 	return ret;
 }
 
+/*
+ * haydn on 5.10: a WLAN runtime suspend (WoW + PCIe DRV handoff to the ADSP)
+ * now and then hangs the whole SoC with no oops or watchdog bark (build
+ * #52: freezes within minutes with Wi-Fi on, none in 20 min with it off).
+ * Keep the link in D0 until the DRV path is fixed. Costs some idle
+ * power; set cnss2.wlan_runtime_pm=1 to test runtime PM again.
+ */
+static bool wlan_runtime_pm;
+module_param(wlan_runtime_pm, bool, 0644);
+MODULE_PARM_DESC(wlan_runtime_pm, "Allow WLAN PCIe runtime suspend (haydn: off)");
+
 static int cnss_pci_runtime_suspend(struct device *dev)
 {
 	int ret = 0;
@@ -3394,6 +3405,11 @@ static int cnss_pci_runtime_suspend(struct device *dev)
 
 	if (pci_priv->pci_link_down_ind) {
 		cnss_pr_dbg("PCI link down recovery is in progress!\n");
+		return -EAGAIN;
+	}
+
+	if (!READ_ONCE(wlan_runtime_pm)) {
+		pr_info_once("cnss: WLAN runtime suspend disabled (cnss2.wlan_runtime_pm=0)\n");
 		return -EAGAIN;
 	}
 
