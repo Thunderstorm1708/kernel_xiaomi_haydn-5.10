@@ -1038,6 +1038,10 @@ static int qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		pr_info_ratelimited("PMIC input: KPDPWR status=0x%02x, KPDPWR_ON=%d\n",
 			pon_rt_sts, (pon_rt_sts & QPNP_PON_KPDPWR_ON));
 
+#ifdef CONFIG_HAYDN_BOOTLOG
+	pr_info("haydn-key: code=%d rt_sts=0x%02x pressed=%d old=%d\n",
+		cfg->key_code, pon_rt_sts, !!key_status, cfg->old_state);
+#endif
 	if (!cfg->old_state && !key_status) {
 		input_report_key(pon->pon_input, cfg->key_code, 1);
 		input_sync(pon->pon_input);
