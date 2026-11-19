@@ -7242,6 +7242,25 @@ static struct snd_soc_dai_link msm_wcn_be_dai_links[] = {
 	},
 };
 
+static bool msm_slim_ngd_supported(void)
+{
+	static const char * const compat[] = {
+		"qcom,slim-ngd-v1.5.0", "qcom,slim-ngd-v2.1.0",
+	};
+	struct device_node *np;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(compat); i++) {
+		np = of_find_compatible_node(NULL, NULL, compat[i]);
+		if (np && of_device_is_available(np)) {
+			of_node_put(np);
+			return true;
+		}
+		of_node_put(np);
+	}
+	return false;
+}
+
 static struct snd_soc_dai_link msm_wcn_btfm_be_dai_links[] = {
 	{
 		.name = LPASS_BE_SLIMBUS_7_RX,
@@ -8303,6 +8322,20 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 			dev_dbg(dev, "%s: No DT match wcn btfm interface\n",
 				__func__);
 		} else {
+			/*
+			 * The BT/FM codec ("btfmslim_slave") sits on the msm
+			 * "qcom,slim-ngd" slimbus controller, which msm-5.10
+			 * does not drive (it only has upstream qcom-ngd-ctrl).
+			 * Without a controller the codec never registers and
+			 * the whole card stays deferred, which takes down all
+			 * audio. Leave the BT/FM links out until that
+			 * controller is ported.
+			 */
+			if (wcn_btfm_intf && !msm_slim_ngd_supported()) {
+				dev_info(dev, "%s: no supported slimbus NGD, skipping BT/FM dai links\n",
+					 __func__);
+				wcn_btfm_intf = 0;
+			}
 			if (wcn_btfm_intf) {
 				memcpy(msm_lahaina_dai_links + total_links,
 					msm_wcn_btfm_be_dai_links,
