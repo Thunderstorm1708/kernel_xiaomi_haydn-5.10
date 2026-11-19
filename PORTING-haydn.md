@@ -356,6 +356,16 @@ Notes:
   drops init's own error lines. Read them from logdump:
   `dd if=/dev/block/by-name/logdump bs=1M count=64 | tr -d '\000' | grep -a init:`.
 
+### WLAN (cnss2 / qcacld)
+
+* Runtime PM is off on haydn for now: `cnss_pci_runtime_suspend()` returns
+  `-EAGAIN` unless `cnss2.wlan_runtime_pm=1`. With it on (build #52), a WLAN
+  runtime suspend (qcacld `pmo_core_enable_wow_in_fw`, then the PCIe DRV handoff
+  to the ADSP over the `pcie_drv` glink channel, lahaina DT `qcom,drv-supported`)
+  occasionally hung the whole SoC with no oops, panic or watchdog bark. Next
+  step: trace `msm_pcie_drv_suspend`/resume and the ADSP DRV handshake, then
+  turn runtime PM back on.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -383,6 +393,10 @@ instead:
      screen only). With `loglevel=7` fbcon drew every info line, which slowed
      the boot animation and turned any WARN into a multi-second stall. bootlog
      reads the log buffer through `kmsg_dump`, so logdump still gets every line.
+   * The bootlog buffer is 16 MiB. Since build #59 it never stops: once full,
+     the first quarter (the boot) is kept and the rest wraps as a ring
+     (`bootlog: ===== ring wrapped =====`). In a dump, the newest lines are
+     the ones just before the point where timestamps jump back.
    * DT nodes are added under `&{/}` in the overlay (`/ {` in an overlay is not
      applied to the base).
 2. **logdump bootlog (diag branch).** `drivers/misc/haydn_bringup/bootlog.c`
@@ -421,7 +435,9 @@ instead:
 | diag #45 | Zorix A16 | **SurfaceFlinger runs** (GPU up), commits every frame but each fails: `smmu_sde_unsec_cb Cannot DMA map uncached buffer as IO-coherent attrs:0x28020` → `sde_plane_prepare_fb` -22. SLPI crash at ~148 s resets the SoC | DMA_ATTR bit 15 clash (below) |
 | diag #48 | Zorix A16 | **ROM boot animation on screen** (display + GPU + SurfaceFlinger work); animation freezes after ~1 min. glink edges register but no channel ever opens; modem DOG stall at ~145 s | glink edges never started |
 | diag #50 | Zorix A16 | **boots to the lock screen** (unlock works, modem registers on the network). Boot 1: opening Settings → hard reset at ~138 s. Boot 2: lock screen frozen (no touch, power key dead), then `WLAN Panic ... Scheduler Watchdog Bite` → `Kernel panic - Fatal exception in interrupt` at 175 s | every display buffer free hits `WARN_ON(!mutex_is_locked(&dev->struct_mutex))` in `msm_gem_free_object`; each WARN dumps a full backtrace + module list through fbcon, which takes seconds per trace with the console lock held. The composer's HwBinder thread (RT) ran 10 s inside printk → RT throttling, the WLAN scheduler watchdog fired its 10 s BUG, and the system froze |
-| diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | under test: same build with Wi-Fi off to confirm or rule out WLAN/PCIe runtime PM | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up. After ~3 min of use: **silent freeze, then reset**. logdump ends mid-logcat at 171.6 s with no oops, panic or watchdog bark; the next 2 s bootlog flush never happened, so the whole SoC hung (bus-hang pattern). Last kernel activity: qcacld `pmo_core_enable_wow_in_fw` (WLAN runtime suspend over PCIe), which had cycled fine every 1–2 s before | confirmed WLAN: same build ran 20 min with Wi-Fi off (no freeze), froze again within minutes after turning Wi-Fi on. Freeze not in logdump: the 16 MiB bootlog buffer filled at ~1038 s |
+| diag #57 | Zorix A16 | built, not flashed | sound card without BT/FM slimbus links; `haydn-key:` power key logging |
+| diag #59+ | Zorix A16 | to be tested | WLAN runtime suspend refused (`cnss2.wlan_runtime_pm=0`); bootlog ring buffer | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
