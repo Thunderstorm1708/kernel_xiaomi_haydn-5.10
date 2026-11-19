@@ -163,7 +163,7 @@ Notes:
 | FBE (HWKM v1, wrappedkey_v0) | builds |
 | ION (msm heaps for gralloc/libion) | ported from msm-5.4 |
 | CDSP / SLPI (sensors) loaders | 5.4 PIL versions |
-| Boot on device | boots Zorix A16 to the lock screen (diag #50); post-boot fixes in progress, see [Boot test history](#boot-test-history) |
+| Boot on device | boots Zorix A16 to a usable system (diag #52: Settings, Wi-Fi, mobile data); post-boot fixes in progress, see [Boot test history](#boot-test-history) |
 
 ## Changes against msm-5.10
 
@@ -371,7 +371,7 @@ instead:
    set to `no-map`) plus fbcon with `TER16x32` shows the kernel log on the panel
    before msm_drm takes over. `panic_timeout=0` keeps a panic on screen. Record
    a video of the boot.
-   * Since build #51 the diag console uses `loglevel=4` (errors and warnings on
+   * Since build #52 the diag console uses `loglevel=4` (errors and warnings on
      screen only). With `loglevel=7` fbcon drew every info line, which slowed
      the boot animation and turned any WARN into a multi-second stall. bootlog
      reads the log buffer through `kmsg_dump`, so logdump still gets every line.
@@ -413,7 +413,7 @@ instead:
 | diag #45 | Zorix A16 | **SurfaceFlinger runs** (GPU up), commits every frame but each fails: `smmu_sde_unsec_cb Cannot DMA map uncached buffer as IO-coherent attrs:0x28020` → `sde_plane_prepare_fb` -22. SLPI crash at ~148 s resets the SoC | DMA_ATTR bit 15 clash (below) |
 | diag #48 | Zorix A16 | **ROM boot animation on screen** (display + GPU + SurfaceFlinger work); animation freezes after ~1 min. glink edges register but no channel ever opens; modem DOG stall at ~145 s | glink edges never started |
 | diag #50 | Zorix A16 | **boots to the lock screen** (unlock works, modem registers on the network). Boot 1: opening Settings → hard reset at ~138 s. Boot 2: lock screen frozen (no touch, power key dead), then `WLAN Panic ... Scheduler Watchdog Bite` → `Kernel panic - Fatal exception in interrupt` at 175 s | every display buffer free hits `WARN_ON(!mutex_is_locked(&dev->struct_mutex))` in `msm_gem_free_object`; each WARN dumps a full backtrace + module list through fbcon, which takes seconds per trace with the console lock held. The composer's HwBinder thread (RT) ran 10 s inside printk → RT throttling, the WLAN scheduler watchdog fired its 10 s BUG, and the system froze |
-| diag #51 | Zorix A16 | to be tested | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #52 | Zorix A16 | **usable system**: Settings opens and navigates (About phone shows `5.10.272-gki-g9b42b19601d5`), Wi-Fi connected, mobile data and signal up, no freeze | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
