@@ -29,6 +29,7 @@
 #include <linux/cpu.h>
 #include <linux/spinlock.h>
 #include <soc/qcom/of_common.h>
+#include <trace/hooks/cpuidle.h>
 
 enum common_ev_idx {
 	INST_IDX,
@@ -534,6 +535,8 @@ static int memlat_event_cpu_hp_init(void)
 #else
 static int memlat_event_cpu_hp_init(void) { return 0; }
 #endif
+enum { IDLE_START = 1, IDLE_END };
+
 static int memlat_idle_notif(struct notifier_block *nb, unsigned long action,
 							void *data)
 {
@@ -555,9 +558,34 @@ static int memlat_idle_notif(struct notifier_block *nb, unsigned long action,
 idle_exit:
 	return ret;
 }
-static struct notifier_block memlat_event_idle_nb = {
-	.notifier_call = memlat_idle_notif,
-};
+/*
+ * msm-5.4 had an idle notifier chain (IDLE_START/IDLE_END); GKI 5.10 has
+ * the android_vh_cpu_idle_enter/exit vendor hooks instead, called from
+ * cpuidle_enter_state() with interrupts off, like the old notifier.
+ */
+static void memlat_vh_idle_enter(void *unused, int *state,
+				 struct cpuidle_device *dev)
+{
+	memlat_idle_notif(NULL, IDLE_START, NULL);
+}
+
+static void memlat_vh_idle_exit(void *unused, int state,
+				struct cpuidle_device *dev)
+{
+	memlat_idle_notif(NULL, IDLE_END, NULL);
+}
+
+static void idle_notifier_register_hooks(void)
+{
+	register_trace_android_vh_cpu_idle_enter(memlat_vh_idle_enter, NULL);
+	register_trace_android_vh_cpu_idle_exit(memlat_vh_idle_exit, NULL);
+}
+
+static void idle_notifier_unregister_hooks(void)
+{
+	unregister_trace_android_vh_cpu_idle_enter(memlat_vh_idle_enter, NULL);
+	unregister_trace_android_vh_cpu_idle_exit(memlat_vh_idle_exit, NULL);
+}
 
 static int start_hwmon(struct memlat_hwmon *hw)
 {
@@ -588,7 +616,7 @@ static int start_hwmon(struct memlat_hwmon *hw)
 				mutex_unlock(&notify_lock);
 				goto unlock_out;
 			}
-			idle_notifier_register(&memlat_event_idle_nb);
+			idle_notifier_register_hooks();
 		}
 		hp_idle_register_cnt++;
 		mutex_unlock(&notify_lock);
@@ -678,7 +706,7 @@ static void stop_hwmon(struct memlat_hwmon *hw)
 	mutex_lock(&notify_lock);
 	if (!hp_idle_register_cnt) {
 		cpuhp_remove_state_nocalls(CPUHP_AP_ONLINE_DYN);
-		idle_notifier_unregister(&memlat_event_idle_nb);
+		idle_notifier_unregister_hooks();
 		for_each_cpu(cpu, cpu_possible_mask) {
 			per_cpu(cpu_is_hp, cpu) = false;
 			per_cpu(cpu_is_idle, cpu) = false;
