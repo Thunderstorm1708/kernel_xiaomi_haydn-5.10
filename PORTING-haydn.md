@@ -195,6 +195,16 @@ Notes:
   `QCOM_LAZY_MAPPING` now depends on `QCOM_DMABUF_HEAPS || ION_MSM_HEAPS`, so it can be
   built in.
 
+### GLINK
+
+* msm-5.10 glink splits `qcom_glink_smem_register()` from
+  `qcom_glink_smem_start()` (IRQ + version handshake); remoteproc calls start from
+  its subdev. The 5.4 `glink_probe` helper (driven by PIL SSR notifications) must
+  call start right after register, or no SMEM edge (ADSP, CDSP, SLPI, modem) ever
+  opens a channel: fastrpc/sensors/APR/QMI over glink all fail, the modem stalls
+  ("DOG detects stalled initialization") and the DSPs assert in
+  `glink_channel_migration`.
+
 ### qseecom / keymaster
 
 * lahaina qseecomd and keymaster allocate from the msm-5.4 ION heaps; msm-5.10
@@ -387,7 +397,8 @@ instead:
 | diag #40 | Zorix A16 | **Android second stage init runs** (system/vendor mounted, logd, servicemanager, keystore2...). Stuck from ~61 s: init blocked in `vdc cryptfs mountFstab`; vold waits for keystore2, keymaster never registers. qseecomd listener registration fails (`mem_buf_dma_buf_copy_vmperm -22`) | qseecom / mem-buf did not understand msm-5.4 ION buffers |
 | diag #43 | Zorix A16 | **data unlocks**; zygote, system_server, audio/camera/wifi services start. SurfaceFlinger aborts at start (17×) → zygote loop; after ~180 s SLPI crashes (glink assertion) and SSR level SYSTEM resets the SoC | kgsl `zap-shader node not found` |
 | diag #45 | Zorix A16 | **SurfaceFlinger runs** (GPU up), commits every frame but each fails: `smmu_sde_unsec_cb Cannot DMA map uncached buffer as IO-coherent attrs:0x28020` → `sde_plane_prepare_fb` -22. SLPI crash at ~148 s resets the SoC | DMA_ATTR bit 15 clash (below) |
-| diag #46+ | Zorix A16 | to be tested | ION coherency from buffer/device only; diag SSR level RELATED | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #48 | Zorix A16 | **ROM boot animation on screen** (display + GPU + SurfaceFlinger work); animation freezes after ~1 min. glink edges register but no channel ever opens; modem DOG stall at ~145 s | glink edges never started |
+| diag #49+ | Zorix A16 | to be tested | glink_probe calls `qcom_glink_smem_start()` | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
