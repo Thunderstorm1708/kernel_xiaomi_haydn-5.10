@@ -37,16 +37,6 @@
 /* Include the master list of GPU cores that are supported */
 #include "adreno-gpulist.h"
 
-/*
- * haydn on 5.10: with I/O-coherent GPU mappings, text drawn by the UI goes
- * missing at random (glyphs blank, icons fine), i.e. the GPU reads stale
- * glyph atlas data. Use non-coherent mappings with CPU cache maintenance
- * until the coherent path (SMMU attributes) is sorted out.
- */
-static bool gpu_iocoherent;
-module_param(gpu_iocoherent, bool, 0444);
-MODULE_PARM_DESC(gpu_iocoherent, "Map GPU buffers I/O-coherent (haydn: off)");
-
 static void adreno_unbind(struct device *dev);
 static void adreno_input_work(struct work_struct *work);
 static int adreno_soft_reset(struct kgsl_device *device);
@@ -1275,10 +1265,8 @@ int adreno_device_probe(struct platform_device *pdev,
 	if (ADRENO_GPUREV(adreno_dev) >= 600)
 		kgsl_mmu_set_feature(device, KGSL_MMU_SMMU_APERTURE);
 
-	if (ADRENO_FEATURE(adreno_dev, ADRENO_IOCOHERENT) && gpu_iocoherent)
+	if (ADRENO_FEATURE(adreno_dev, ADRENO_IOCOHERENT))
 		kgsl_mmu_set_feature(device, KGSL_MMU_IO_COHERENT);
-	else if (ADRENO_FEATURE(adreno_dev, ADRENO_IOCOHERENT))
-		dev_info(device->dev, "I/O coherency off (msm_kgsl.gpu_iocoherent=0)\n");
 
 	device->pwrctrl.bus_width = adreno_dev->gpucore->bus_width;
 
