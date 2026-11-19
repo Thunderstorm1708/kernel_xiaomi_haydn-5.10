@@ -208,6 +208,14 @@ Notes:
   bootlog alternates between them. `/dev/block/by-name/logdump` points to only
   one, so read both and take the higher `seq=`.
 
+### DMA attributes
+
+* msm-5.10 `qcom-dma-mapping.h` defines `DMA_ATTR_FORCE_COHERENT` as bit 15, the
+  same bit as `DMA_ATTR_SYS_CACHE_ONLY_NWA` (`DMA_ATTR_IOMMU_USE_LLC_NWA`), which
+  msm_drm sets on every import. The ported msm-5.4 ION map path must not read
+  `FORCE_COHERENT` from the caller's attrs, or every display buffer is refused
+  ("Cannot DMA map uncached buffer as IO-coherent").
+
 ### PIL / subsystem restart (not remoteproc)
 
 * lahaina keeps the msm-5.4 PIL/SSR framework (the DT uses `qcom,pil-tz-generic`;
@@ -378,7 +386,8 @@ instead:
 | diag #38 | Zorix A16 | all vendor_boot modules up to msm_drm load; DSI ctrl0/1 probe; **hard freeze at 20.35 s** while dsi-display-primary probes (no further output, logger stopped too) | TE GPIO request hang (below) |
 | diag #40 | Zorix A16 | **Android second stage init runs** (system/vendor mounted, logd, servicemanager, keystore2...). Stuck from ~61 s: init blocked in `vdc cryptfs mountFstab`; vold waits for keystore2, keymaster never registers. qseecomd listener registration fails (`mem_buf_dma_buf_copy_vmperm -22`) | qseecom / mem-buf did not understand msm-5.4 ION buffers |
 | diag #43 | Zorix A16 | **data unlocks**; zygote, system_server, audio/camera/wifi services start. SurfaceFlinger aborts at start (17×) → zygote loop; after ~180 s SLPI crashes (glink assertion) and SSR level SYSTEM resets the SoC | kgsl `zap-shader node not found` |
-| diag #44+ | Zorix A16 | to be tested | `zap-shader` node on kgsl-3d0 → pil_gpu_mem; logcap (logcat in logdump) | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #45 | Zorix A16 | **SurfaceFlinger runs** (GPU up), commits every frame but each fails: `smmu_sde_unsec_cb Cannot DMA map uncached buffer as IO-coherent attrs:0x28020` → `sde_plane_prepare_fb` -22. SLPI crash at ~148 s resets the SoC | DMA_ATTR bit 15 clash (below) |
+| diag #46+ | Zorix A16 | to be tested | ION coherency from buffer/device only; diag SSR level RELATED | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
