@@ -21,6 +21,7 @@
 #define __MSM_DRV_H__
 
 #include <linux/kernel.h>
+#include <linux/llist.h>
 #include <linux/clk.h>
 #include <linux/cpufreq.h>
 #include <linux/module.h>
@@ -867,6 +868,10 @@ struct msm_drm_private {
 	/* list of GEM objects: */
 	struct list_head inactive_list;
 
+	/* GEM objects waiting to be freed under struct_mutex */
+	struct llist_head free_list;
+	struct work_struct free_work;
+
 	struct workqueue_struct *wq;
 
 	/* crtcs pending async atomic updates: */
@@ -1094,6 +1099,7 @@ int msm_gem_madvise(struct drm_gem_object *obj, unsigned madv);
 int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout);
 int msm_gem_cpu_fini(struct drm_gem_object *obj);
 void msm_gem_free_object(struct drm_gem_object *obj);
+void msm_gem_free_work(struct work_struct *work);
 int msm_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 		uint32_t size, uint32_t flags, uint32_t *handle, char *name);
 struct drm_gem_object *msm_gem_new(struct drm_device *dev,
