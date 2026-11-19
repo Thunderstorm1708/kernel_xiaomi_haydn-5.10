@@ -21,6 +21,10 @@
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/devfreq.h>
+/* the msm-5.4 memlat trace events are not in 5.10's trace/events/power.h */
+#define trace_memlat_dev_meas(...)	do { } while (0)
+#define trace_memlat_dev_update(...)	do { } while (0)
+
 #include "governor.h"
 #include "governor_memlat.h"
 
@@ -196,8 +200,8 @@ static int gov_start(struct devfreq *df)
 	if (ret < 0)
 		goto err_sysfs;
 
+	/* 5.10: devfreq has no min_freq/max_freq fields; just re-evaluate */
 	mutex_lock(&df->lock);
-	df->min_freq = df->max_freq;
 	update_devfreq(df);
 	mutex_unlock(&df->lock);
 
