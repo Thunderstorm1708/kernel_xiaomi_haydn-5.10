@@ -1077,6 +1077,15 @@ static u32 adreno_get_vk_device_id(struct kgsl_device *device)
 }
 
 #if IS_ENABLED(CONFIG_QCOM_LLCC)
+/*
+ * haydn diag: test whether the GPU system cache (LLCC) slices are what
+ * corrupts long-lived GPU textures (missing UI text, blank blur layers).
+ * Off by default in the diag build only.
+ */
+static bool gpu_llcc = !IS_ENABLED(CONFIG_HAYDN_BOOTLOG);
+module_param(gpu_llcc, bool, 0444);
+MODULE_PARM_DESC(gpu_llcc, "Use the GPU/GPUHTW LLCC slices");
+
 static int adreno_probe_llcc(struct adreno_device *adreno_dev,
 		struct platform_device *pdev)
 {
@@ -1128,6 +1137,13 @@ static int adreno_probe_llcc(struct adreno_device *adreno_dev,
 					"Unable to get GPUMV buffer slice: %d\n", ret);
 		} else
 			adreno_dev->gpumv_llc_slice_enable = true;
+	}
+
+	if (!gpu_llcc) {
+		adreno_dev->gpu_llc_slice_enable = false;
+		adreno_dev->gpuhtw_llc_slice_enable = false;
+		adreno_dev->gpumv_llc_slice_enable = false;
+		dev_info(&pdev->dev, "GPU LLCC slices disabled (msm_kgsl.gpu_llcc=0)\n");
 	}
 
 	return 0;
@@ -1282,7 +1298,8 @@ int adreno_device_probe(struct platform_device *pdev,
 	 * IF the GPU HTW slice was successsful set the MMU feature so the
 	 * domain can set the appropriate attributes
 	 */
-	if (!IS_ERR_OR_NULL(adreno_dev->gpuhtw_llc_slice))
+	if (!IS_ERR_OR_NULL(adreno_dev->gpuhtw_llc_slice) &&
+	    adreno_dev->gpuhtw_llc_slice_enable)
 		kgsl_mmu_set_feature(device, KGSL_MMU_LLCC_ENABLE);
 
 	 /* Bind the components before doing the KGSL platform probe. */
