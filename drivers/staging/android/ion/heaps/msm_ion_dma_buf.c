@@ -175,6 +175,7 @@ static struct sg_table
 	struct msm_ion_dma_buf_attachment *a = attachment->priv;
 	struct sg_table *table;
 	int count, map_attrs;
+	bool force_coherent;
 	struct ion_buffer *buffer = attachment->dmabuf->priv;
 	unsigned long ino = file_inode(attachment->dmabuf->file)->i_ino;
 
@@ -186,14 +187,17 @@ static struct sg_table
 	    !hlos_accessible_buffer(buffer))
 		map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
-	if ((buffer->flags & ION_FLAG_CACHED) &&
-	    hlos_accessible_buffer(buffer) &&
-	    dev_is_dma_coherent_hint_cached(attachment->dev))
-		map_attrs |= DMA_ATTR_FORCE_COHERENT;
+	/*
+	 * msm-5.10 qcom-dma-mapping.h: DMA_ATTR_FORCE_COHERENT is bit 15, the
+	 * same bit as DMA_ATTR_SYS_CACHE_ONLY_NWA (DMA_ATTR_IOMMU_USE_LLC_NWA),
+	 * which msm_drm sets on every import. Never read FORCE_COHERENT from
+	 * the caller's attrs, and don't add it: decide coherency here.
+	 */
+	force_coherent = (buffer->flags & ION_FLAG_CACHED) &&
+			 hlos_accessible_buffer(buffer) &&
+			 dev_is_dma_coherent_hint_cached(attachment->dev);
 
-	if (((dev_is_dma_coherent(attachment->dev) &&
-	      !(map_attrs & DMA_ATTR_FORCE_NON_COHERENT)) ||
-	     (map_attrs & DMA_ATTR_FORCE_COHERENT)) &&
+	if ((dev_is_dma_coherent(attachment->dev) || force_coherent) &&
 	    !(buffer->flags & ION_FLAG_CACHED)) {
 		pr_warn_ratelimited("dev:%s Cannot DMA map uncached buffer as IO-coherent attrs:0x%lx\n",
 				    dev_name(attachment->dev), map_attrs);
@@ -271,10 +275,7 @@ static void msm_ion_unmap_dma_buf(struct dma_buf_attachment *attachment,
 	    !hlos_accessible_buffer(buffer))
 		map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
-	if ((buffer->flags & ION_FLAG_CACHED) &&
-	    hlos_accessible_buffer(buffer) &&
-	    dev_is_dma_coherent_hint_cached(attachment->dev))
-		map_attrs |= DMA_ATTR_FORCE_COHERENT;
+	/* see msm_ion_map_dma_buf(): FORCE_COHERENT aliases LLC_NWA on 5.10 */
 
 	if (map_attrs & DMA_ATTR_SKIP_CPU_SYNC)
 		trace_ion_dma_unmap_cmo_skip(attachment->dev,
