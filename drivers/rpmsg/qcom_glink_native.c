@@ -1956,6 +1956,9 @@ static int qcom_glink_rx_open(struct qcom_glink *glink, unsigned int rcid,
 		rpdev->dev.parent = glink->dev;
 		rpdev->dev.release = qcom_glink_rpdev_release;
 
+		if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
+			pr_info("glink: %s: remote opened channel %s\n",
+				glink->name, name);
 		ret = rpmsg_register_device(rpdev);
 		if (ret)
 			goto rcid_remove;

@@ -50,6 +50,8 @@ static int glink_probe_ssr_cb(struct notifier_block *this,
 	struct edge_info *einfo = container_of(this, struct edge_info, nb);
 
 	GLINK_INFO("received %ld for %s\n", code, einfo->ssr_label);
+	if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
+		pr_info("glink_probe: %s ssr event %lu\n", einfo->ssr_label, code);
 
 	switch (code) {
 	case SUBSYS_AFTER_POWERUP:
@@ -80,6 +82,9 @@ static int glink_probe_smem_reg(struct edge_info *einfo)
 		einfo->glink = NULL;
 	}
 	GLINK_INFO("register successful for %s\n", einfo->ssr_label);
+	if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
+		pr_info("glink_probe: %s edge %s\n", einfo->ssr_label,
+			einfo->glink ? "registered" : "FAILED");
 
 	return 0;
 }
@@ -165,6 +170,9 @@ static void probe_subsystem(struct device *dev, struct device_node *np)
 
 	list_add_tail(&einfo->list, &edge_infos);
 	GLINK_INFO("probe successful for %s\n", einfo->ssr_label);
+	if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
+		pr_info("glink_probe: waiting for %s (glink %s)\n",
+			einfo->ssr_label, einfo->glink_label);
 
 	return;
 
