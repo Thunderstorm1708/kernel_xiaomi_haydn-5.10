@@ -80,6 +80,21 @@ static int glink_probe_smem_reg(struct edge_info *einfo)
 	if (IS_ERR_OR_NULL(einfo->glink)) {
 		GLINK_ERR(dev, "register failed for %s\n", einfo->ssr_label);
 		einfo->glink = NULL;
+	} else {
+		/*
+		 * msm-5.10 glink splits probe from start: start requests the
+		 * edge IRQ and sends the version handshake. remoteproc calls it
+		 * from its subdev start op; with PIL we start right after the
+		 * remote is up. Without it no edge ever talked to its DSP.
+		 */
+		int ret = qcom_glink_smem_start(einfo->glink);
+
+		if (ret) {
+			GLINK_ERR(dev, "start failed for %s: %d\n",
+				  einfo->ssr_label, ret);
+			qcom_glink_smem_unregister(einfo->glink);
+			einfo->glink = NULL;
+		}
 	}
 	GLINK_INFO("register successful for %s\n", einfo->ssr_label);
 	if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG))
