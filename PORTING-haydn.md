@@ -163,7 +163,7 @@ Notes:
 | FBE (HWKM v1, wrappedkey_v0) | builds |
 | ION (msm heaps for gralloc/libion) | ported from msm-5.4 |
 | CDSP / SLPI (sensors) loaders | 5.4 PIL versions |
-| Boot on device | panics fixed one by one; see [Boot test history](#boot-test-history) |
+| Boot on device | boots Zorix A16 to the lock screen (diag #50); post-boot fixes in progress, see [Boot test history](#boot-test-history) |
 
 ## Changes against msm-5.10
 
@@ -269,6 +269,16 @@ Notes:
   `dsi_display_bind`. `dsi_display_register_te_irq()` no longer requests it;
   ESD falls back to non-TE checking (found by xiaomi-lahaina-devs).
 
+* GEM free: on 5.10 the DRM core drops the last GEM reference without
+  `struct_mutex` (msm registers `.gem_free_object_unlocked`), but the 5.4
+  techpack's `msm_gem_free_object()` expected the lock (it does
+  `list_del(&msm_obj->mm_list)` from `priv->inactive_list`) and WARNed on every
+  framebuffer destroy. Some callers drop references while already holding
+  `struct_mutex`, so the free path cannot take it directly. Objects are now
+  pushed onto `priv->free_list` (llist) and freed by `priv->free_work` on
+  `priv->wq` under `struct_mutex`, the way upstream msm did it. Without this,
+  the WARN storm froze the UI after boot (build #50).
+
 ### GPU
 
 * msm-5.10 kgsl loads `a660_zap` itself (`qcom_mdt_load` into the `zap-shader`
@@ -361,6 +371,10 @@ instead:
    set to `no-map`) plus fbcon with `TER16x32` shows the kernel log on the panel
    before msm_drm takes over. `panic_timeout=0` keeps a panic on screen. Record
    a video of the boot.
+   * Since build #51 the diag console uses `loglevel=4` (errors and warnings on
+     screen only). With `loglevel=7` fbcon drew every info line, which slowed
+     the boot animation and turned any WARN into a multi-second stall. bootlog
+     reads the log buffer through `kmsg_dump`, so logdump still gets every line.
    * DT nodes are added under `&{/}` in the overlay (`/ {` in an overlay is not
      applied to the base).
 2. **logdump bootlog (diag branch).** `drivers/misc/haydn_bringup/bootlog.c`
@@ -398,7 +412,8 @@ instead:
 | diag #43 | Zorix A16 | **data unlocks**; zygote, system_server, audio/camera/wifi services start. SurfaceFlinger aborts at start (17×) → zygote loop; after ~180 s SLPI crashes (glink assertion) and SSR level SYSTEM resets the SoC | kgsl `zap-shader node not found` |
 | diag #45 | Zorix A16 | **SurfaceFlinger runs** (GPU up), commits every frame but each fails: `smmu_sde_unsec_cb Cannot DMA map uncached buffer as IO-coherent attrs:0x28020` → `sde_plane_prepare_fb` -22. SLPI crash at ~148 s resets the SoC | DMA_ATTR bit 15 clash (below) |
 | diag #48 | Zorix A16 | **ROM boot animation on screen** (display + GPU + SurfaceFlinger work); animation freezes after ~1 min. glink edges register but no channel ever opens; modem DOG stall at ~145 s | glink edges never started |
-| diag #49+ | Zorix A16 | to be tested | glink_probe calls `qcom_glink_smem_start()` | `qcom,wlan;` on the lahaina cnss node; QUPv3 `interconnects` (GENI SPI/I2C/UART probe -ENOENT in #35) |
+| diag #50 | Zorix A16 | **boots to the lock screen** (unlock works, modem registers on the network). Boot 1: opening Settings → hard reset at ~138 s. Boot 2: lock screen frozen (no touch, power key dead), then `WLAN Panic ... Scheduler Watchdog Bite` → `Kernel panic - Fatal exception in interrupt` at 175 s | every display buffer free hits `WARN_ON(!mutex_is_locked(&dev->struct_mutex))` in `msm_gem_free_object`; each WARN dumps a full backtrace + module list through fbcon, which takes seconds per trace with the console lock held. The composer's HwBinder thread (RT) ran 10 s inside printk → RT throttling, the WLAN scheduler watchdog fired its 10 s BUG, and the system froze |
+| diag #51 | Zorix A16 | to be tested | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
@@ -424,6 +439,17 @@ couldn't find an available UDC`, keymaster@4.0 not found (no vendor partition).
   #17 and #20). After the reset the bootloader boots recovery mode, where only the
   11 recovery modules load and UFS/USB never probe (no `sd*`, no UDC).
 * fastrpc minidump CMA buffer: allocated before `adsprpc-mem` probes.
+* Seen in the #50 logs (after the lock screen, not fatal on their own):
+  * `qti_battery_charger_main`: `battery_chg_write()` sleeps in
+    `wait_for_completion_timeout()` from `usb_psy_get_prop()` inside an RCU read
+    section (`power_supply_changed_work`) → `rcu_note_context_switch` WARN.
+  * Camera EEPROM I2C read times out (-110), then `cam_cc_mclk1_clk already
+    disabled` and unbalanced regulator disables in `cam_sensor_util_power_down`.
+  * ROM Dolby app (`org.lunaris.dolby`) crash-loops: "Cannot initialize effect
+    engine" (audio DSP effect not available yet).
+  * `cnss: Failed to wait for response of get info request, err: -110`.
+  * adb: `adbd: timed out while waiting for FUNCTIONFS_BIND` (no UDC).
+  * lineage health `IChargingControl` AIDL service missing.
 * mem-buf: `qcom,vmid` missing in the 5.4 DT.
 * After first boot: Wi-Fi, BT, audio and haptics checked against the reference
   tree's DT; LPM/DCVS tuning; then KernelSU + SUSFS; then make `haydn-5.10` the default branch.
