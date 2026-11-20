@@ -427,8 +427,11 @@ Notes:
     `android_vh_cpu_idle_enter/exit`.
   * `governor_memlat.c`: devfreq has no `min_freq`/`max_freq` on 5.10 (start
     just calls `update_devfreq()`); the memlat trace events are stubbed.
-* `bw_hwmon` (`QCOM_BIMC_BWMON`, `DEVFREQ_GOV_QCOM_BW_HWMON`) still needs its
-  trace events and the min/max_freq uses ported.
+* `bw_hwmon` (`QCOM_BIMC_BWMON`, `DEVFREQ_GOV_QCOM_BW_HWMON`) is ported from
+  diag #84: `governor_bw_hwmon.c` uses `scaling_max_freq` instead of
+  `max_freq`, drops the `min_freq` writes and stubs `trace_bw_hwmon_*`.
+* Diag #84+ prints every cpufreq policy (governor, cur/min/max, hw max) and the
+  online/active CPU masks every 15 bootlog ticks (`show_cpufreq()`).
 * Heat note for testers: the diag cmdline has `clk_ignore_unused
   pd_ignore_unused`, which keeps every unused clock and power domain on.
   The normal build does not.
@@ -443,6 +446,22 @@ Notes:
   role was set and the gadget never came up (`udc-core: couldn't find an
   available UDC`, adbd waiting for FUNCTIONFS_BIND). The port now sits inside
   a `connector` node.
+* #82 froze ~1 min after a USB cable to another phone was unplugged: oops
+  (NULL deref at 0x98) right after `DWC3 exited from low power mode`, from a
+  host-role start with no xhci. The dwc3 child now has `usb-role-switch;
+  role-switch-default-mode = "peripheral";` and `dwc3_otg_start_host()`
+  returns -ENODEV without `dwc3_drd_sw` (#84+).
+* #84 then panicked on a USB reconnect when the role went to host:
+  `arm-smmu: Unhandled context fault from a600000.ssusb`, FAR =
+  0x1344c7000 (a physical address), then `kernel BUG at arm-smmu.c:1017`.
+  `xhci-plat` picks the first device with a DT node as its DMA `sysdev`,
+  which is the `dwc3` child; that node has no `iommus` (they are on the
+  `ssusb` glue parent, and the child is marked `linux,sysdev_is_parent`).
+  So xhci used dma-direct, the controller DMA'd to raw physical addresses and
+  the SMMU (SID 0x0) faulted. `xhci-plat.c` now follows
+  `linux,sysdev_is_parent` like dwc3 core does for gadget mode; the PHY and
+  TPL lookups still use the child node (#86+). Any msm dwc3 port to 5.10
+  with xhci-plat needs this.
 
 ### Power key (qpnp-power-on)
 
@@ -451,6 +470,11 @@ Notes:
   `haydn-key:` log showed the key bouncing on release (release, press,
   release within ~200 us), which Android reads as a double press (camera)
   or a long press. The software debounce is now at least 15625 us.
+* #84: every press is one clean down/up pair. The remaining "double tick" on
+  screen off also happens with double-tap-to-sleep (no key involved), so it is
+  the screen-off feedback (lock sound or haptics HAL) playing twice, not the
+  key driver. To check: turn off the screen locking sound and see whether the
+  double tick stays (haptics) or goes away (audio).
 
 ### Suspend / resume latency (thermal core)
 
@@ -559,7 +583,10 @@ instead:
 | diag #73 | Zorix A16 | **panic at 13.9 s**: the sound card registered for the first time on 5.10 and `soc_new_pcm()` oopsed in `snd_soc_set_runtime_hwparams()` (NULL `substream->runtime` for a `no_host_mode` PCM). #70 has the same audio change and would hit it too. mem_latency/compute governors loaded fine (only the 3 bw_hwmon nodes still fail) | + mem_latency/compute devfreq governors (diag only) |
 | diag #76 | Zorix A16 | **sensors: 41, same as 5.4** (SLPI PDR fix confirmed; auto-rotate works). **Media sound works** (speaker, ringtone). YouTube plays with a picture and offers qualities; one brief green preview frame seen. Still broken: camera, call audio both ways, in-call proximity, UI text glyphs (also with GPU LLCC off, so LLCC is not the cause), slow wake, USB to PC/phone | NULL-runtime fix in `snd_soc_set_runtime_hwparams()`; camera powers up even if the shared pm8008i_l7 rejects a voltage |
 | diag #76 (session 2) | Zorix A16 | 40 min with Wi-Fi on, screen off/on fine (Wi-Fi suspend fix holds). Call: no voice either way; audio HAL killed by audioserver TimeCheck (`setPhoneState` > 5 s). Power key: release bounce (release, press, release within ~200 us) → camera gesture. Screen wake 5-7 s: every aborted/finished suspend takes 4-7 s to reach `PM: suspend exit`. Camera: sensors acquire and release, never `CAM_START_DEV`. Ended in a hard hang during YouTube, seconds after the WLAN firmware stopped answering (`wlan_hdd_send_ll_stats_req: Target response timed out`) | |
-| #82+ | Zorix A16 | to be tested | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #82 | Zorix A16 | Power key events clean (no bounce). Froze ~1 min after unplugging USB from another phone: NULL deref after `DWC3 exited from low power mode` (host-role start without xhci). Aborted suspends still take ~5 s to reach `PM: suspend exit` | |
+| diag #84 | Zorix A16 | USB file transfer to the other device works. Froze on a USB reconnect: host mode started, xhci DMA bypassed the SMMU → `arm-smmu` context fault → BUG → panic. Power key presses each one clean event; double tick also with double-tap-to-sleep (Android feedback). Calls: still no audio either way, no in-call proximity | dwc3 usb-role-switch + host guard; bw_hwmon; diag PM notifier timing and cpufreq dump |
+| #86+ | Zorix A16 | to be tested | xhci-plat uses the SMMU-backed `ssusb` parent for DMA |
+| #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
