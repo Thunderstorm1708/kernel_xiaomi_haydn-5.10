@@ -1488,8 +1488,19 @@ int cam_soc_util_regulator_enable(struct regulator *rgltr,
 		rc = regulator_set_voltage(
 			rgltr, rgltr_min_volt, rgltr_max_volt);
 		if (rc) {
-			CAM_ERR(CAM_UTIL, "%s set voltage failed", rgltr_name);
-			return rc;
+			/*
+			 * Two supplies of one sensor can sit on the same rail
+			 * with different requests (haydn rear sensor:
+			 * cam_vana 2.904 V and cam_v_custom2 2.8 V, both
+			 * pm8008i_l7), and the regulator core then rejects the
+			 * second request. Keep the rail where the other
+			 * consumer has it and power up anyway.
+			 */
+			CAM_WARN(CAM_UTIL,
+				"%s set voltage %u-%u failed rc %d, rail at %d uV, continuing",
+				rgltr_name, rgltr_min_volt, rgltr_max_volt, rc,
+				regulator_get_voltage(rgltr));
+			rc = 0;
 		}
 
 		rc = regulator_set_load(rgltr, rgltr_op_mode);
