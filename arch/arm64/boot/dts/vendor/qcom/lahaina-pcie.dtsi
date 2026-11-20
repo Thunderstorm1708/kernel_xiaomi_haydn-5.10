@@ -113,6 +113,12 @@
 		qcom,l1ss-sleep-disable = <0x1>;
 		qcom,drv-l1ss-timeout-us = <5000>;
 		qcom,no-l0s-supported;
+		/*
+		 * haydn diag: keep the WLAN link out of L1 substates. #76 still
+		 * hung after the WLAN firmware stopped answering ("Target
+		 * response timed out") with the link kept in D0.
+		 */
+		qcom,no-l1ss-supported;
 		qcom,l1-2-th-scale = <2>;
 		qcom,l1-2-th-value = <70>;
 		qcom,slv-addr-space-size = <0x4000000>;
