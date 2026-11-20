@@ -224,6 +224,7 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	const struct xhci_plat_priv *priv_match;
 	const struct hc_driver	*driver;
 	struct device		*sysdev, *tmpdev;
+	struct device		*of_sysdev = NULL;
 	struct xhci_hcd		*xhci;
 	struct resource         *res;
 	struct usb_hcd		*hcd;
@@ -260,6 +261,20 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 	if (!sysdev)
 		sysdev = &pdev->dev;
+
+	/*
+	 * haydn: on msm dwc3 the "dwc3" child node is marked
+	 * linux,sysdev_is_parent - the IOMMU (apps_smmu SID 0x0) and the
+	 * DMA setup live on the glue parent (a600000.ssusb). Using the child
+	 * makes xhci DMA bypass the SMMU and program physical addresses,
+	 * which faults as soon as host mode starts (arm-smmu BUG/panic).
+	 * Do what dwc3 core does for gadget mode and use the parent.
+	 */
+	if (sysdev != &pdev->dev && sysdev->parent &&
+	    device_property_read_bool(sysdev, "linux,sysdev_is_parent")) {
+		of_sysdev = sysdev;
+		sysdev = sysdev->parent;
+	}
 
 	/* Try to set 64-bit DMA first */
 	if (WARN_ON(!sysdev->dma_mask))
@@ -366,7 +381,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 					 &xhci->imod_interval);
 	}
 
-	hcd->usb_phy = devm_usb_get_phy_by_phandle(sysdev, "usb-phy", 0);
+	hcd->usb_phy = devm_usb_get_phy_by_phandle(of_sysdev ? of_sysdev : sysdev,
+						    "usb-phy", 0);
 	if (IS_ERR(hcd->usb_phy)) {
 		ret = PTR_ERR(hcd->usb_phy);
 		if (ret == -EPROBE_DEFER)
@@ -382,7 +398,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		goto disable_usb_phy;
 
-	hcd->tpl_support = of_usb_host_tpl_support(sysdev->of_node);
+	hcd->tpl_support = of_usb_host_tpl_support(of_sysdev ? of_sysdev->of_node :
+							      sysdev->of_node);
 	xhci->shared_hcd->tpl_support = hcd->tpl_support;
 
 	if (priv) {
