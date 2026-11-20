@@ -5551,9 +5551,16 @@
 
 		qcom,ucsi {
 			compatible = "qcom,ucsi-glink";
-			port {
-				usb_port0_connector: endpoint {
-					remote-endpoint = <&usb_port0>;
+			/*
+			 * 5.10 ucsi takes the Nth child node as connector N
+			 * and looks for its role switch through the graph
+			 * under it, so the port sits inside a connector node.
+			 */
+			connector {
+				port {
+					usb_port0_connector: endpoint {
+						remote-endpoint = <&usb_port0>;
+					};
 				};
 			};
 		};
