@@ -321,6 +321,16 @@ Notes:
   `substream->runtime` is NULL (msm-5.4 behaviour). `soc_new_pcm()` applies
   `no_host_hardware` to hostless (`no_host_mode`) PCMs right after creating
   them, before any stream is open (#73 panic).
+* `sound/core/pcm_native.c`: `snd_pcm_pre_start()` skips the "playback
+  buffer empty" -EPIPE check for `hw_no_buffer` substreams again, as
+  msm-5.4 did. ACK 5.10 keeps the `hw_no_buffer` field (and our `soc_new_pcm`
+  sets it) but core ALSA never reads it, so starting the hostless voice FE
+  (`VoiceMMode1`) failed: audio HAL `voice_start_usecase: cannot start
+  channel: Broken pipe`, no call audio in either direction (#88+).
+  Any QGKI audio port to a GKI 5.10 core needs this.
+* `iio/us_prox.c` logs `us_prox: buffer enabled/disabled` so a test shows
+  whether the ultrasound HAL starts the proximity stream; ADSP events show
+  as `us_afe_callback: data = N` (0 = far, non-zero = near).
 * `lahaina.c`: the BT/FM `SLIMBUS_7/8` dai links (`qcom,wcn-bt` and
   `qcom,wcn-btfm`; haydn's overlay uses `qcom,wcn-bt`, so the first fix in #57
   missed it) are left out unless an upstream `qcom,slim-ngd-v1.5.0`/`v2.1.0` node is available. Their
@@ -494,6 +504,13 @@ Notes:
 * UI slow (3 s app starts, 1-7 s binder calls) while the kernel's own 2 s
   bootlog ticks stay on time. Compare with the normal build to separate diag
   overhead.
+* cpufreq governor: all three policies run `schedutil` (GKI default).
+  WALT is built in (`CONFIG_SCHED_WALT=y`) and registers its own `walt`
+  cpufreq governor (`kernel/sched/walt/cpufreq_walt.c`), which msm-5.10
+  vendor init normally selects; the haydn 5.4 ROM init sets/tunes
+  schedutil instead. Options: switch to `walt` (tunables under
+  `policyN/walt/`), or give schedutil the 5.4 `up_rate_limit_us` /
+  `down_rate_limit_us` nodes the ROM writes.
 * libperfmgr writes 5.4-only nodes (`schedutil/up_rate_limit_us`,
   `/proc/sys/kernel/sched_busy_hysteresis_enable_cpus`; WALT on 5.10 has
   `/proc/sys/walt/...`), so the ROM's boost hints partly do nothing.
@@ -590,6 +607,7 @@ instead:
 | diag #82 | Zorix A16 | Power key events clean (no bounce). Froze ~1 min after unplugging USB from another phone: NULL deref after `DWC3 exited from low power mode` (host-role start without xhci). Aborted suspends still take ~5 s to reach `PM: suspend exit` | |
 | diag #84 | Zorix A16 | USB file transfer to the other device works. Froze on a USB reconnect: host mode started, xhci DMA bypassed the SMMU → `arm-smmu` context fault → BUG → panic. Power key presses each one clean event; double tick also with double-tap-to-sleep (Android feedback). Calls: still no audio either way, no in-call proximity | dwc3 usb-role-switch + host guard; bw_hwmon; diag PM notifier timing and cpufreq dump |
 | #86+ | Zorix A16 | to be tested | xhci-plat uses the SMMU-backed `ssusb` parent for DMA |
+| #88+ | Zorix A16 | to be tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):

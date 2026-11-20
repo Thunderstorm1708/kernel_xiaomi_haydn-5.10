@@ -104,14 +104,14 @@ static const struct iio_chan_spec us_proximity_channels[] = {
 
 static int us_buffer_postenable(struct iio_dev *indio_dev)
 {
-	int ret = 0;
-	return ret;
+	pr_info("us_prox: buffer enabled\n");
+	return 0;
 }
 
 static int us_buffer_predisable(struct iio_dev *indio_dev)
 {
-	int ret = 0;
-	return ret;
+	pr_info("us_prox: buffer disabled\n");
+	return 0;
 }
 
 static const struct iio_buffer_setup_ops us_buffer_setup_ops = {
