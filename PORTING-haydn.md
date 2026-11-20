@@ -304,6 +304,19 @@ Notes:
   name, so a card that is stuck waiting for a component shows which one in the boot log.
 * `lahaina.c`: dev PM QoS uses `PM_QOS_RESUME_LATENCY_NO_CONSTRAINT`
   (`PM_QOS_DEFAULT_VALUE` is gone from the dev PM QoS API).
+* `msm-pcm-routing-v2.c`: `.read`/`.write` stubs are back on the routing
+  component. It has no registers, but its DAPM muxes and widgets use
+  reg/shift as virtual registers; without callbacks 5.10 ASoC returns -EIO
+  (1132 read + 234 update_bits errors in one session, `Failed to add route
+  ... VOC_EXT_EC MUX` at registration). msm-5.4 had them; only their comment
+  was left.
+* `iio/us_prox.c` (ultrasonic proximity): the IIO poll function gets real
+  handlers (`iio_pollfunc_store_time` + a notify-done handler). 5.10's IIO
+  core attaches it to the trigger when the triggered buffer is enabled and
+  `request_threaded_irq()` refuses NULL handlers, so `buffer/enable` failed
+  with -EINVAL and the in-call proximity never started. The routes for
+  `RX1_CDC_DMA_DL_US`/`PRI_TDM_RX_1_DL_US` failing is expected: haydn uses
+  `TERT_TDM_RX_1_DL_US`.
 * `soc-pcm.c`: `snd_soc_set_runtime_hwparams()` returns 0 when
   `substream->runtime` is NULL (msm-5.4 behaviour). `soc_new_pcm()` applies
   `no_host_hardware` to hostless (`no_host_mode`) PCMs right after creating
@@ -431,6 +444,41 @@ Notes:
   available UDC`, adbd waiting for FUNCTIONFS_BIND). The port now sits inside
   a `connector` node.
 
+### Power key (qpnp-power-on)
+
+* pmk8350's `pon_hlos` asks for `qcom,kpdpwr-sw-debounce` but has no
+  `qcom,pon-dbc-delay`, and the debounce read back is too short. The diag
+  `haydn-key:` log showed the key bouncing on release (release, press,
+  release within ~200 us), which Android reads as a double press (camera)
+  or a long press. The software debounce is now at least 15625 us.
+
+### Suspend / resume latency (thermal core)
+
+* `thermal_pm_notify()` read every thermal zone synchronously in
+  `PM_POST_SUSPEND`, including ~26 modem QMI sensors (`set_trips` sends a QMI
+  request with a 100 ms timeout; the mmW sensors do not exist on haydn). Every
+  aborted or finished suspend took 4-7 s to reach `PM: suspend exit`, and power
+  key or double-tap presses in between did nothing: the 5-7 s screen wake.
+  Zones are now re-evaluated from their poll work (upstream made the same
+  change later).
+
+### Open: stability and speed (#76 log)
+
+* Hard hang during YouTube, no oops; seconds before it the WLAN firmware
+  stopped answering link-layer stats requests. Diag #82+ turns off L1
+  substates on PCIe0 (`qcom,no-l1ss-supported`) to test the link.
+* UI slow (3 s app starts, 1-7 s binder calls) while the kernel's own 2 s
+  bootlog ticks stay on time. Compare with the normal build to separate diag
+  overhead.
+* libperfmgr writes 5.4-only nodes (`schedutil/up_rate_limit_us`,
+  `/proc/sys/kernel/sched_busy_hysteresis_enable_cpus`; WALT on 5.10 has
+  `/proc/sys/walt/...`), so the ROM's boost hints partly do nothing.
+* Thermal HAL cannot read CPU/GPU/NSP zones (`Temperature buf stoi error ...
+  TZ:39-58`) and the thermal-cpufreq cooling devices fail to bind (-22).
+* Camera: both sensors acquire and release again within 1-2 s and streaming
+  never starts; no kernel error. Needs a description of what the app shows
+  and a CamX log.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -510,7 +558,8 @@ instead:
 | diag #70 | Zorix A16 | built | SLPI sensors PD for fastrpc; camera regulator votes released |
 | diag #73 | Zorix A16 | **panic at 13.9 s**: the sound card registered for the first time on 5.10 and `soc_new_pcm()` oopsed in `snd_soc_set_runtime_hwparams()` (NULL `substream->runtime` for a `no_host_mode` PCM). #70 has the same audio change and would hit it too. mem_latency/compute governors loaded fine (only the 3 bw_hwmon nodes still fail) | + mem_latency/compute devfreq governors (diag only) |
 | diag #76 | Zorix A16 | **sensors: 41, same as 5.4** (SLPI PDR fix confirmed; auto-rotate works). **Media sound works** (speaker, ringtone). YouTube plays with a picture and offers qualities; one brief green preview frame seen. Still broken: camera, call audio both ways, in-call proximity, UI text glyphs (also with GPU LLCC off, so LLCC is not the cause), slow wake, USB to PC/phone | NULL-runtime fix in `snd_soc_set_runtime_hwparams()`; camera powers up even if the shared pm8008i_l7 rejects a voltage |
-| #78+ | Zorix A16 | to be tested | UCSI connector node (USB gadget) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #76 (session 2) | Zorix A16 | 40 min with Wi-Fi on, screen off/on fine (Wi-Fi suspend fix holds). Call: no voice either way; audio HAL killed by audioserver TimeCheck (`setPhoneState` > 5 s). Power key: release bounce (release, press, release within ~200 us) → camera gesture. Screen wake 5-7 s: every aborted/finished suspend takes 4-7 s to reach `PM: suspend exit`. Camera: sensors acquire and release, never `CAM_START_DEV`. Ended in a hard hang during YouTube, seconds after the WLAN firmware stopped answering (`wlan_hdd_send_ll_stats_req: Target response timed out`) | |
+| #82+ | Zorix A16 | to be tested | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
