@@ -26,6 +26,7 @@
 #include <linux/iio/trigger.h>
 #include <linux/iio/buffer.h>
 #include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of_irq.h>
@@ -256,6 +257,14 @@ error_ret:
 }
 
 
+static irqreturn_t us_prox_trigger_handler(int irq, void *p)
+{
+	struct iio_poll_func *pf = p;
+
+	iio_trigger_notify_done(pf->indio_dev->trig);
+	return IRQ_HANDLED;
+}
+
 static int us_proximity_iio_setup(struct us_prox_data *data)
 {
 	struct iio_dev *idev;
@@ -279,7 +288,17 @@ static int us_proximity_iio_setup(struct us_prox_data *data)
 
 	priv_data = iio_priv(idev);
 	*priv_data = data;
-	ret = iio_trigger_buffer_setup(idev, NULL, NULL,
+	/*
+	 * 5.10's IIO core attaches the poll function to the trigger itself
+	 * when a triggered buffer is enabled, and request_threaded_irq()
+	 * refuses NULL handlers, so "buffer/enable" failed with -EINVAL
+	 * (ultrasound HAL: "open file .../buffer/enable ... error 22") and
+	 * the in-call proximity never started. Data is pushed directly from
+	 * us_afe_callback(); the trigger never fires, so these handlers only
+	 * have to exist.
+	 */
+	ret = iio_trigger_buffer_setup(idev, iio_pollfunc_store_time,
+					us_prox_trigger_handler,
 					&us_buffer_setup_ops);
 	if (ret < 0)
 		goto free_iio_p;
