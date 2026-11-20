@@ -1413,7 +1413,14 @@ static int snd_pcm_pre_start(struct snd_pcm_substream *substream,
 		return -EBADFD;
 	if (atomic_read(&runtime->buffer_accessing) < 0)
 		return -EBADFD; /* during hw_params, hw_free or prepare */
+	/*
+	 * haydn: hostless (no_host_mode) links such as the voice call FE never
+	 * get data written from the CPU side; msm-5.4 skipped the empty-buffer
+	 * check for them (hw_no_buffer). Without this, pcm_start on the voice
+	 * RX stream fails with -EPIPE and calls have no audio either way.
+	 */
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
+	    !substream->hw_no_buffer &&
 	    !snd_pcm_playback_data(substream))
 		return -EPIPE;
 	runtime->trigger_tstamp_latched = false;
