@@ -76,6 +76,15 @@
 			tx-fifo-resize;
 			maximum-speed = "super-speed-plus";
 			dr_mode = "otg";
+			/*
+			 * msm-5.10 dwc3-msm switches roles through the dwc3
+			 * core's own DRD role switch. Without it the core forces
+			 * dr_mode to peripheral, never creates the xHCI device,
+			 * and the first host-mode switch dereferences a NULL
+			 * dwc->xhci.
+			 */
+			usb-role-switch;
+			role-switch-default-mode = "peripheral";
 		};
 
 		qcom,usbbam@a704000 {

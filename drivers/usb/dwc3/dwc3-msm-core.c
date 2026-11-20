@@ -6003,6 +6003,16 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	u32 reg;
 
+	if (on && (!dwc || !mdwc->dwc3_drd_sw)) {
+		/*
+		 * No dwc3 DRD role switch (dwc3 node without usb-role-switch):
+		 * the core runs gadget-only and dwc->xhci never exists.
+		 */
+		dev_err(mdwc->dev, "%s: no dwc3 DRD role switch, host mode unavailable\n",
+			__func__);
+		return -ENODEV;
+	}
+
 	if (on) {
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
