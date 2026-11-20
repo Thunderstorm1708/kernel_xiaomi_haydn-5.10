@@ -2447,6 +2447,21 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 	pon->kpdpwr_dbc_enable = of_property_read_bool(dev->of_node,
 						"qcom,kpdpwr-sw-debounce");
 
+	/*
+	 * haydn (pmk8350, PON gen3, no qcom,pon-dbc-delay in the DT): the
+	 * debounce time read back is too short for the software debounce
+	 * to work. The power key bounces on release and the diag log shows
+	 * a release, a press and a release again within ~200 us, which
+	 * Android reads as a double press (camera) or a long press. Ignore
+	 * key events for at least 15.6 ms after a release, the debounce
+	 * the other msm PMIC DTs ask for.
+	 */
+	if (pon->kpdpwr_dbc_enable && pon->dbc_time_us < 15625) {
+		dev_info(dev, "kpdpwr sw debounce %u us -> 15625 us\n",
+			 pon->dbc_time_us);
+		pon->dbc_time_us = 15625;
+	}
+
 	pon->store_hard_reset_reason = of_property_read_bool(dev->of_node,
 					"qcom,store-hard-reset-reason");
 
