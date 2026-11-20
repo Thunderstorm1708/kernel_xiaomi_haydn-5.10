@@ -500,8 +500,12 @@ Notes:
 * Thermal HAL cannot read CPU/GPU/NSP zones (`Temperature buf stoi error ...
   TZ:39-58`) and the thermal-cpufreq cooling devices fail to bind (-22).
 * Camera: both sensors acquire and release again within 1-2 s and streaming
-  never starts; no kernel error. Needs a description of what the app shows
-  and a CamX log.
+  never starts; no kernel error. The app opens (privacy dot on) with a black
+  preview. In #84 the HAL loops every ~1.2 s: sensor ACQUIRE (0x1ad2 @0x20,
+  0x355 @0x34), ICP `cam_hfi_resume`, then RELEASE, with no ISP acquire or
+  CAM_START_DEV in between. Diag #88+ adds `camera.debug_mdl=0x11a`
+  (CORE|ISP|CRM|ICP) to the cmdline so the failing step shows up as
+  `CAM_DBG:` lines.
 
 ### Other
 
