@@ -44065,7 +44065,30 @@ void msm_routing_add_doa_control(struct snd_soc_component *component)
 }
 #endif
 
+/*
+ * The routing component has no registers, but its DAPM muxes and widgets
+ * use reg/shift fields as virtual registers. Without read/write
+ * callbacks 5.10 ASoC returns -EIO for every access, so muxes such as
+ * "VOC_EXT_EC MUX" and the ultrasound DL_US paths failed to get their
+ * routes at card registration ("ASoC: error at soc_component_read_no_lock
+ * ... -5", "Failed to add route ...") and widget power updates failed
+ * during use. msm-5.4 had these stubs.
+ */
+static unsigned int msm_routing_read(struct snd_soc_component *component,
+				     unsigned int reg)
+{
+	dev_dbg(component->dev, "reg %x\n", reg);
+	return 0;
+}
+
 /* Not used but frame seems to require it */
+static int msm_routing_write(struct snd_soc_component *component,
+			     unsigned int reg, unsigned int val)
+{
+	dev_dbg(component->dev, "reg %x val %x\n", reg, val);
+	return 0;
+}
+
 static int msm_routing_probe(struct snd_soc_component *component)
 {
 	snd_soc_dapm_new_controls(&component->dapm, msm_qdsp6_widgets,
@@ -44208,6 +44231,8 @@ static struct snd_soc_component_driver msm_soc_routing_component = {
 	.name		= DRV_NAME,
 	.ops		= &msm_routing_pcm_ops,
 	.probe		= msm_routing_probe,
+	.read		= msm_routing_read,
+	.write		= msm_routing_write,
 	.pcm_new	= msm_routing_pcm_new,
 	.pcm_free	= msm_routing_pcm_free,
 };
