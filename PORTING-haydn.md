@@ -420,6 +420,17 @@ Notes:
   pd_ignore_unused`, which keeps every unused clock and power domain on.
   The normal build does not.
 
+### USB (UCSI / dwc3 role switch)
+
+* msm-5.10's dwc3-msm only starts the controller when the Type-C role switch
+  sets a role. `ucsi_find_fwnode()` takes the Nth child of the ucsi device as
+  connector N and finds the role switch through the graph under it. The 5.4
+  DT had the `port` directly under `qcom,ucsi`, so the lookup found nothing
+  (`OF: graph: no port node found in /soc/qcom,pmic_glink/qcom,ucsi/port`), no
+  role was set and the gadget never came up (`udc-core: couldn't find an
+  available UDC`, adbd waiting for FUNCTIONFS_BIND). The port now sits inside
+  a `connector` node.
+
 ### Other
 
 * PDC: `qcom,lahaina-pdc` is matched.
@@ -498,7 +509,8 @@ instead:
 | diag #68 | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped; GPU without LLCC slices |
 | diag #70 | Zorix A16 | built | SLPI sensors PD for fastrpc; camera regulator votes released |
 | diag #73 | Zorix A16 | **panic at 13.9 s**: the sound card registered for the first time on 5.10 and `soc_new_pcm()` oopsed in `snd_soc_set_runtime_hwparams()` (NULL `substream->runtime` for a `no_host_mode` PCM). #70 has the same audio change and would hit it too. mem_latency/compute governors loaded fine (only the 3 bw_hwmon nodes still fail) | + mem_latency/compute devfreq governors (diag only) |
-| diag #76 | Zorix A16 | to be tested | NULL-runtime fix in `snd_soc_set_runtime_hwparams()`; camera powers up even if the shared pm8008i_l7 rejects a voltage | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #76 | Zorix A16 | **sensors: 41, same as 5.4** (SLPI PDR fix confirmed; auto-rotate works). **Media sound works** (speaker, ringtone). YouTube plays with a picture and offers qualities; one brief green preview frame seen. Still broken: camera, call audio both ways, in-call proximity, UI text glyphs (also with GPU LLCC off, so LLCC is not the cause), slow wake, USB to PC/phone | NULL-runtime fix in `snd_soc_set_runtime_hwparams()`; camera powers up even if the shared pm8008i_l7 rejects a voltage |
+| #78+ | Zorix A16 | to be tested | UCSI connector node (USB gadget) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
