@@ -304,6 +304,10 @@ Notes:
   name, so a card that is stuck waiting for a component shows which one in the boot log.
 * `lahaina.c`: dev PM QoS uses `PM_QOS_RESUME_LATENCY_NO_CONSTRAINT`
   (`PM_QOS_DEFAULT_VALUE` is gone from the dev PM QoS API).
+* `soc-pcm.c`: `snd_soc_set_runtime_hwparams()` returns 0 when
+  `substream->runtime` is NULL (msm-5.4 behaviour). `soc_new_pcm()` applies
+  `no_host_hardware` to hostless (`no_host_mode`) PCMs right after creating
+  them, before any stream is open (#73 panic).
 * `lahaina.c`: the BT/FM `SLIMBUS_7/8` dai links (`qcom,wcn-bt` and
   `qcom,wcn-btfm`; haydn's overlay uses `qcom,wcn-bt`, so the first fix in #57
   missed it) are left out unless an upstream `qcom,slim-ngd-v1.5.0`/`v2.1.0` node is available. Their
@@ -387,6 +391,11 @@ Notes:
 
 ### Camera (`techpack/camera`)
 
+* `cam_soc_util_regulator_enable()` warns and carries on when
+  `regulator_set_voltage()` fails. Releasing the vote on power down was not
+  enough: the rear sensor's power sequence enables cam_v_custom2 (2.8 V) and
+  cam_vana (2.904 V) together on pm8008i_l7, so the second request always
+  conflicted (#73 log). The rail stays at the first consumer's level.
 * `cam_soc_util_regulator_disable()` releases the voltage vote with
   `(0, INT_MAX)` and also when `regulator_disable()` fails. A `(0, max)` vote
   still caps the rail for other consumers; the rear sensor's cam_vana
@@ -488,7 +497,8 @@ instead:
 | diag #61 (Wi-Fi on) | Zorix A16 | ran ~25 min with Wi-Fi on, then hung on the first screen-off system suspend (log ends at `__wlan_hdd_bus_suspend: starting bus suspend`); reset when the power key was pressed. Sound still dead (`qcom,wcn-bt` links still added). All SLPI sensors missing except proximity; YouTube frames black/green | see WLAN, Audio |
 | diag #68 | Zorix A16 | to be tested | WLAN link kept up across system suspend; `qcom,wcn-bt` links skipped; GPU without LLCC slices |
 | diag #70 | Zorix A16 | built | SLPI sensors PD for fastrpc; camera regulator votes released |
-| diag #73 | Zorix A16 | to be tested (if it does not boot, use #70) | + mem_latency/compute devfreq governors (diag only) | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
+| diag #73 | Zorix A16 | **panic at 13.9 s**: the sound card registered for the first time on 5.10 and `soc_new_pcm()` oopsed in `snd_soc_set_runtime_hwparams()` (NULL `substream->runtime` for a `no_host_mode` PCM). #70 has the same audio change and would hit it too. mem_latency/compute governors loaded fine (only the 3 bw_hwmon nodes still fail) | + mem_latency/compute devfreq governors (diag only) |
+| diag #76 | Zorix A16 | to be tested | NULL-runtime fix in `snd_soc_set_runtime_hwparams()`; camera powers up even if the shared pm8008i_l7 rejects a voltage | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
 sensors-ssc / cdsp-loader (fixed in #17), fastrpc "CMA alloc failed" (minidump
