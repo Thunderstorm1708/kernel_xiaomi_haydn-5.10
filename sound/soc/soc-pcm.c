@@ -292,6 +292,14 @@ int snd_soc_set_runtime_hwparams(struct snd_pcm_substream *substream,
 	const struct snd_pcm_hardware *hw)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+
+	/*
+	 * msm-5.4 behaviour: soc_new_pcm() applies no_host_hardware to the
+	 * hostless (no_host_mode) PCMs right after creating them, when no
+	 * stream is open and runtime is still NULL.
+	 */
+	if (!runtime)
+		return 0;
 	runtime->hw.info = hw->info;
 	runtime->hw.formats = hw->formats;
 	runtime->hw.period_bytes_min = hw->period_bytes_min;
