@@ -1641,8 +1641,17 @@ static int thermal_pm_notify(struct notifier_block *nb,
 				continue;
 
 			thermal_zone_device_init(tz);
-			thermal_zone_device_update(tz,
-						   THERMAL_EVENT_UNSPECIFIED);
+			/*
+			 * Re-evaluate the zone from its poll work instead of
+			 * here. Reading every zone synchronously in the PM
+			 * notifier includes ~26 modem QMI sensors (100 ms
+			 * timeout each, several absent on haydn) and held up
+			 * every resume or aborted suspend by 4-7 s, which is
+			 * how long the screen took to wake (upstream later made
+			 * this asynchronous too).
+			 */
+			mod_delayed_work(system_freezable_power_efficient_wq,
+					 &tz->poll_queue, 0);
 		}
 		break;
 	default:
