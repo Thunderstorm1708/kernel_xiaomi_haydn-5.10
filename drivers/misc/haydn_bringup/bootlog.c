@@ -23,6 +23,8 @@
 #include <linux/sched/debug.h>
 #include <linux/sched/signal.h>
 #include <linux/haydn_bootlog.h>
+#include <linux/cpufreq.h>
+#include <linux/cpumask.h>
 
 #define LOG_PAGES	4096	/* 16 MiB */
 #define SCAN_MINORS	1024
@@ -251,6 +253,28 @@ static void flush(void)
 	done = used;
 }
 
+/* CPU frequency and which CPUs the scheduler may use (paused/isolated) */
+static void show_cpufreq(void)
+{
+	int cpu;
+
+	pr_info("bootlog: cpus online=%*pbl active=%*pbl\n",
+		cpumask_pr_args(cpu_online_mask),
+		cpumask_pr_args(cpu_active_mask));
+	for_each_possible_cpu(cpu) {
+		struct cpufreq_policy *pol = cpufreq_cpu_get(cpu);
+
+		if (!pol)
+			continue;
+		if (pol->cpu == cpu)
+			pr_info("bootlog: cpufreq cpu%d gov=%s cur=%u min=%u max=%u hw_max=%u\n",
+				cpu, pol->governor ? pol->governor->name : "-",
+				pol->cur, pol->min, pol->max,
+				pol->cpuinfo.max_freq);
+		cpufreq_cpu_put(pol);
+	}
+}
+
 static void show_tasks(void)
 {
 	struct task_struct *p, *t;
@@ -306,6 +330,8 @@ static int bootlog_thread(void *unused)
 		if (time_after_eq(jiffies, beat)) {
 			beat = jiffies + 2 * HZ;
 			pr_info("bootlog: tick %d\n", tick);
+			if (tick % 15 == 0)
+				show_cpufreq();
 			if (tick == 15 || tick == 45 || tick == 75)
 				show_tasks();
 			if (tick == 3 || tick == 12 || tick == 30 || tick == 60)

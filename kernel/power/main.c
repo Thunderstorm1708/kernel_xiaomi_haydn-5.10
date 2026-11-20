@@ -89,10 +89,40 @@ int pm_notifier_call_chain_robust(unsigned long val_up, unsigned long val_down)
 	return notifier_to_errno(ret);
 }
 
+#ifdef CONFIG_HAYDN_BOOTLOG
+/*
+ * haydn diag: every aborted or finished suspend takes 4-7 s to reach
+ * "PM: suspend exit". Call the notifiers one by one and log the slow
+ * ones.
+ */
+int pm_notifier_call_chain(unsigned long val)
+{
+	struct notifier_block *nb;
+	ktime_t t0, start = ktime_get();
+	s64 ms;
+
+	down_read(&pm_chain_head.rwsem);
+	for (nb = rcu_dereference_raw(pm_chain_head.head); nb;
+	     nb = rcu_dereference_raw(nb->next)) {
+		t0 = ktime_get();
+		nb->notifier_call(nb, val, NULL);
+		ms = ktime_ms_delta(ktime_get(), t0);
+		if (ms >= 50)
+			pr_info("haydn-pm: notifier %ps event %lu took %lld ms\n",
+				nb->notifier_call, val, ms);
+	}
+	up_read(&pm_chain_head.rwsem);
+	ms = ktime_ms_delta(ktime_get(), start);
+	if (ms >= 50)
+		pr_info("haydn-pm: event %lu notifiers took %lld ms\n", val, ms);
+	return 0;
+}
+#else
 int pm_notifier_call_chain(unsigned long val)
 {
 	return blocking_notifier_call_chain(&pm_chain_head, val, NULL);
 }
+#endif
 
 /* If set, devices may be suspended and resumed asynchronously. */
 int pm_async_enabled = 1;

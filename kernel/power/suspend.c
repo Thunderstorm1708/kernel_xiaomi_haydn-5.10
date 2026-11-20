@@ -365,7 +365,15 @@ static int suspend_prepare(suspend_state_t state)
 	dpm_save_failed_step(SUSPEND_FREEZE);
 	pm_notifier_call_chain(PM_POST_SUSPEND);
  Restore:
-	pm_restore_console();
+	{
+		ktime_t haydn_t0 = ktime_get();
+
+		pm_restore_console();
+		if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG) &&
+		    ktime_ms_delta(ktime_get(), haydn_t0) >= 50)
+			pr_info("haydn-pm: pm_restore_console took %lld ms\n",
+				ktime_ms_delta(ktime_get(), haydn_t0));
+	}
 	return error;
 }
 
@@ -545,7 +553,15 @@ static void suspend_finish(void)
 {
 	suspend_thaw_processes();
 	pm_notifier_call_chain(PM_POST_SUSPEND);
-	pm_restore_console();
+	{
+		ktime_t haydn_t0 = ktime_get();
+
+		pm_restore_console();
+		if (IS_ENABLED(CONFIG_HAYDN_BOOTLOG) &&
+		    ktime_ms_delta(ktime_get(), haydn_t0) >= 50)
+			pr_info("haydn-pm: pm_restore_console took %lld ms\n",
+				ktime_ms_delta(ktime_get(), haydn_t0));
+	}
 }
 
 /**
