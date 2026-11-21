@@ -240,12 +240,23 @@ static struct sg_table
 	return table;
 }
 
+/*
+ * haydn: UI text and decoded images drop out at random on 5.10 (GPU reads
+ * stale buffer contents). By default ION only does cache maintenance on
+ * begin/end_cpu_access through attachments that are currently mapped, so
+ * CPU writes made while no device has the buffer mapped are never cleaned.
+ * ion_force_dma_sync=1 (kernel cmdline, set at boot) cleans/invalidates the
+ * whole buffer through the heap device on every CPU access instead.
+ */
+bool ion_force_dma_sync;
+core_param(ion_force_dma_sync, ion_force_dma_sync, bool, 0444);
+
 void ion_prepare_sgl_for_force_dma_sync(struct sg_table *table)
 {
 	struct scatterlist *sg;
 	int i;
 
-	if (IS_ENABLED(CONFIG_ION_FORCE_DMA_SYNC)) {
+	if (ion_force_dma_sync) {
 		/*
 		 * this will set up dma addresses for the sglist -- it is not
 		 * technically correct as per the dma api -- a specific
@@ -590,7 +601,7 @@ static int msm_ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 	}
 
 
-	if (IS_ENABLED(CONFIG_ION_FORCE_DMA_SYNC)) {
+	if (ion_force_dma_sync) {
 		struct device *dev = msm_ion_heap_device(buffer->heap);
 		struct sg_table *table = buffer->sg_table;
 
@@ -644,7 +655,7 @@ static int msm_ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 		goto out;
 	}
 
-	if (IS_ENABLED(CONFIG_ION_FORCE_DMA_SYNC)) {
+	if (ion_force_dma_sync) {
 		struct device *dev = msm_ion_heap_device(buffer->heap);
 		struct sg_table *table = buffer->sg_table;
 
@@ -702,7 +713,7 @@ static int msm_ion_dma_buf_begin_cpu_access_partial(struct dma_buf *dmabuf,
 		goto out;
 	}
 
-	if (IS_ENABLED(CONFIG_ION_FORCE_DMA_SYNC)) {
+	if (ion_force_dma_sync) {
 		struct device *dev = msm_ion_heap_device(buffer->heap);
 		struct sg_table *table = buffer->sg_table;
 
@@ -773,7 +784,7 @@ static int msm_ion_dma_buf_end_cpu_access_partial(struct dma_buf *dmabuf,
 		goto out;
 	}
 
-	if (IS_ENABLED(CONFIG_ION_FORCE_DMA_SYNC)) {
+	if (ion_force_dma_sync) {
 		struct device *dev = msm_ion_heap_device(buffer->heap);
 		struct sg_table *table = buffer->sg_table;
 
