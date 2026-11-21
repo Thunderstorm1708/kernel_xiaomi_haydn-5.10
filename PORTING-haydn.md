@@ -382,6 +382,17 @@ Notes:
   more over time, independent of the API. Diag #126+ has
   `msm_kgsl.tlb_flush_slumber` (0644, default 0, diag cmdline 1) to flush
   always; toggle live through `/sys/module/msm_kgsl/parameters/`.
+* #132 (tlb_flush_slumber=1): text still vanishes and parts still blink,
+  so it is not the slumber TLB skip.
+* Next: the GPU SMMU (`kgsl_smmu`, msm-arm-smmu-lahaina.dtsi) carries
+  `dma-coherent`, so arm-smmu sets `ARM_SMMU_FEAT_COHERENT_WALK` ("coherent
+  table walk" at boot) and KGSL's per-process io-pgtables, which copy the
+  TTBR1 cfg, skip cleaning PTE writes from the CPU cache. If the walks are
+  not really coherent, the GPU uses stale PTEs and reads the wrong pages.
+  xiaomi-lahaina-devs/5.10-sm8350-H hit GPU faults from this and removed
+  `dma-coherent` from `kgsl_smmu` (their stage 2Z-6). Diag #134+ does the
+  same through `/delete-property/` in `haydn-sm8350.dtsi`; the boot log
+  should then say "non-coherent table walk" for 3da0000.kgsl-smmu.
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -897,6 +908,8 @@ instead:
 | #130+ | Zorix A16 | to be tested | bootlog waits for both logdump partitions before choosing |
 | #130 | Zorix A16 | `/sys/fs/pstore` empty even after a normal restart | |
 | #132+ | Zorix A16 | to be tested | diag: `reboot=warm` so pstore survives restarts and panics |
+| #132 | Zorix A16 | Text still vanishes, parts still blink (TLB flush on unmap did not help) | |
+| #134+ | Zorix A16 | to be tested | diag: `dma-coherent` removed from `kgsl_smmu` (non-coherent GPU table walks) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
