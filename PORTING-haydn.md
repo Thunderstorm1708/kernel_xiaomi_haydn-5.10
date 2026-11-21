@@ -660,7 +660,7 @@ instead:
 | diag #90 | Zorix A16 | Call audio works both ways; in-call proximity turns the screen off; fingerprint works. Rest still being tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
 | #92+ | Zorix A16 | to be tested | KGSL cache range op covers the right pages (missing text) |
 | diag #90 (more) | Zorix A16 | Text still missing (pre-#92). After ~9 min CPUs 1-7 stayed offline (memlat hotplug -EACCES); wake took ~7 s (fbcon console); USB gadget lost after host use; USB DAC fails enumeration (-71); camera black (CamX never acquires ISP HW) | |
-| #96 | Zorix A16 | Slow wake / multi-press fixed. Missing text still comes and goes | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
+| #96 | Zorix A16 | Lag/stutter fixed (CPUs stay online), slow wake / multi-press fixed, VoIP audio in video calls works. Still open: missing text and blinking images (GPU texture data), USB-C earphones/DAC not detected (audio stays on speaker), camera (also video calls) | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
