@@ -287,6 +287,20 @@ Notes:
   <&pil_gpu_mem>; }; }` added. Without it the GPU never starts and SurfaceFlinger
   aborts in a loop.
 
+### GPU cache maintenance (missing UI text)
+
+* `kgsl_cache_range_op()` (`drivers/gpu/msm/kgsl_sharedmem.c`) did
+  `size += offset & PAGE_MASK; offset &= ~PAGE_MASK;` and then used the
+  in-page remainder as a page index (sgt path) or as the start of a byte
+  window (page-list path). The msm-5.10 version walks `memdesc->pages`
+  for normal allocations, so for an unaligned range it skipped the
+  range's first page (and could miss the last). msm-5.4 always built an
+  sgt and mostly hid this. Symptom: letters missing in UI text (icons and
+  images fine) until a theme change rebuilt the glyph atlas, with GPU I/O
+  coherency on (#58+) or off (#61). Now the op covers
+  `[offset >> PAGE_SHIFT, PAGE_ALIGN(offset + size))` on both paths (#92+).
+  Any port of msm-5.10 KGSL should take this.
+
 ### Audio (`techpack/audio`, ASoC core)
 
 * `CONFIG_AUDIO_QGKI` carries the msm-5.4 core extensions. ASoC falls back to
@@ -608,6 +622,7 @@ instead:
 | diag #84 | Zorix A16 | USB file transfer to the other device works. Froze on a USB reconnect: host mode started, xhci DMA bypassed the SMMU → `arm-smmu` context fault → BUG → panic. Power key presses each one clean event; double tick also with double-tap-to-sleep (Android feedback). Calls: still no audio either way, no in-call proximity | dwc3 usb-role-switch + host guard; bw_hwmon; diag PM notifier timing and cpufreq dump |
 | #86+ | Zorix A16 | to be tested | xhci-plat uses the SMMU-backed `ssusb` parent for DMA |
 | diag #90 | Zorix A16 | Call audio works both ways; in-call proximity turns the screen off; fingerprint works. Rest still being tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
+| #92+ | Zorix A16 | to be tested | KGSL cache range op covers the right pages (missing text) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):

@@ -739,27 +739,37 @@ int kgsl_cache_range_op(struct kgsl_memdesc *memdesc, uint64_t offset,
 	if (offset + size > memdesc->size)
 		return -ERANGE;
 
-	size += offset & PAGE_MASK;
-	offset &= ~PAGE_MASK;
+	/*
+	 * haydn: operate on every page that [offset, offset + size) touches.
+	 * The old code turned offset into the in-page remainder and then
+	 * treated it as a page index (sgt path) or as a byte window start
+	 * (page list path), so an unaligned range skipped its first page
+	 * and could miss its last one. With I/O coherency off, the CPU
+	 * writes that the GPU then reads (glyph atlas uploads, small and
+	 * unaligned) stayed in the CPU cache: UI letters went missing until
+	 * the atlas was rebuilt (theme change).
+	 */
+	{
+		u64 first = offset >> PAGE_SHIFT;
+		u64 npages = (PAGE_ALIGN(offset + size) >> PAGE_SHIFT) - first;
 
-	/* If there is a sgt, use for_each_sg_page to walk it */
-	if (memdesc->sgt) {
-		struct sg_page_iter sg_iter;
+		/* If there is a sgt, use for_each_sg_page to walk it */
+		if (memdesc->sgt) {
+			struct sg_page_iter sg_iter;
 
-		for_each_sg_page(memdesc->sgt->sgl, &sg_iter,
-			PAGE_ALIGN(size) >> PAGE_SHIFT, offset >> PAGE_SHIFT)
-			_dma_cache_op(memdesc->dev, sg_page_iter_page(&sg_iter), op);
-		return 0;
-	}
+			for_each_sg_page(memdesc->sgt->sgl, &sg_iter,
+				memdesc->sgt->orig_nents, first) {
+				if (!npages--)
+					break;
+				_dma_cache_op(memdesc->dev,
+					sg_page_iter_page(&sg_iter), op);
+			}
+			return 0;
+		}
 
-	/* Otherwise just walk through the list of pages */
-	for (i = 0; i < memdesc->page_count; i++) {
-		u64 cur = (i << PAGE_SHIFT);
-
-		if ((cur < offset) || (cur >= (offset + size)))
-			continue;
-
-		_dma_cache_op(memdesc->dev, memdesc->pages[i], op);
+		/* Otherwise just walk through the list of pages */
+		for (i = first; i < memdesc->page_count && npages; i++, npages--)
+			_dma_cache_op(memdesc->dev, memdesc->pages[i], op);
 	}
 
 	return 0;
