@@ -294,6 +294,24 @@ Notes:
   measured by the diag PM timing. Removed from the diag cmdline (#94+);
   panics are still caught by bootlog. The normal build never had it.
 
+* Even without fbcon, `pm_restore_console` still took up to ~1.1 s
+  (#96): with no driver registered, `pm_vt_switch()` defaults to switching
+  VTs around suspend. With `CONFIG_ANDROID` it now returns false (#102+).
+
+### Bluetooth (QCA6490 "hastings" over HS-UART se18 @ 0x890000)
+
+* #96: BT toggles on and straight back off. The vendor HAL powers the chip
+  through btpower (`bt_ioctl: BT_CMD_PWR_CTRL`, BT_EN gpio), reads the SoC
+  version over the UART at the default baud (works: `400c0110`), then
+  switches the UART to high speed and the chip never answers:
+  `InitTimeOut: SoC Initialization stuck`, secondary reason
+  `SetBaudRateStuck`, `Captured UART CTS: 1`, then com.android.bluetooth
+  aborts. The SE clock table (wrap2 s4) and the UART DT node match 5.4,
+  and the driver logs no clock error. The UART driver's own log goes to
+  ipc_logging, which this ROM has no debugfs for, so diag #102+ mirrors the
+  control/power (not rx/tx data) messages to dmesg with
+  `msm_geni_serial.haydn_uart_dbg=1` (`haydn-uart:` lines).
+
 ### GPU cache maintenance (missing UI text)
 
 * `kgsl_cache_range_op()` (`drivers/gpu/msm/kgsl_sharedmem.c`) did
@@ -505,6 +523,16 @@ Notes:
   MTP/adb); a USB DAC failed full-speed enumeration (`device descriptor
   read/64, error -71`) and the controller kept cycling low power. #94+
   logs every role change (`haydn-usb: set_role`, `haydn-usb: core role`).
+* #96 role log: exactly one `set_role NONE -> HOST` (Nothing Phone 2 as the
+  partner), then `UCSI: ucsi_qti_glink_write: timed out for sync_write_ack`
+  / `UCSI_GET_PDOS failed (-110)`, and no role change ever again (not on
+  unplug, not for later cables). 5.10's UCSI core asks a USB-PD partner for
+  its source PDOs; msm-5.4's never did, and the 5.4-era ADSP charger
+  firmware does not answer, which wedges the glink PPM. The USB-C DAC and
+  earphones were then plugged into a port still in host mode (no proper
+  VBUS/role) and failed full-speed enumeration (`device descriptor
+  read/64, error -71`). `ucsi.c` now skips GET_PDOS unless
+  `ucsi.get_pdos=1` (#102+).
 
 ### Power key (qpnp-power-on)
 
@@ -661,6 +689,8 @@ instead:
 | #92+ | Zorix A16 | to be tested | KGSL cache range op covers the right pages (missing text) |
 | diag #90 (more) | Zorix A16 | Text still missing (pre-#92). After ~9 min CPUs 1-7 stayed offline (memlat hotplug -EACCES); wake took ~7 s (fbcon console); USB gadget lost after host use; USB DAC fails enumeration (-71); camera black (CamX never acquires ISP HW) | |
 | #96 | Zorix A16 | Lag/stutter fixed (CPUs stay online), slow wake / multi-press fixed, VoIP audio in video calls works. Still open: missing text and blinking images (GPU texture data), USB-C earphones/DAC not detected (audio stays on speaker), camera (also video calls) | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
+| #96 logs | Zorix A16 | CPUs online all boot (85/85 snapshots). USB: one host session then UCSI GET_PDOS timeout, role never changes again; DAC -71. BT: baud switch stuck | |
+| #102+ | Zorix A16 | to be tested | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
