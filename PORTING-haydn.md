@@ -599,6 +599,15 @@ Notes:
   (0)`. So WoW itself works; the SoC hangs in a later suspend step, within
   the ~50 ms before the bootlog thread's next write (earlier logs ended on
   `system suspend wow` only because of that write interval).
+* #132 (pm trace on, seq 38): the WLAN part completed (`bus suspend
+  succeeded`, `done ... cnss_pci_suspend 0`), then cnss2 platform, three
+  memshare clients and two coresight replicators suspended, and the last
+  line on storage is `call type input input1 input_dev_suspend`
+  (gpio-keys), 4 ms after WLAN finished. input_dev_suspend cannot hang the
+  SoC, so the hang looks asynchronous: something fires a few ms after
+  WLAN arms WoW, while the CPU does unrelated work. The hang also happens
+  with Wi-Fi off and mobile data on (that log was lost), and not with both
+  off.
 * Diag #128+: `haydn_pm_trace=1` (`core_param`, 0644, live in
   `/sys/module/kernel/parameters/haydn_pm_trace`) logs every
   suspend-direction device callback in `dpm_run_callback()` before
@@ -622,7 +631,11 @@ Notes:
   PSCI uses SYSTEM_RESET (cold), not SYSTEM_RESET2 (warm). The 5.4 lahaina
   DT has no `qcom,pshold` node either, so `msm-poweroff` (and its
   `qcom,force-warm-reboot`) is not used on either kernel.
-* Diag #132+ boots with `reboot=warm`: restarts and panics use SYSTEM_RESET2,
+* #132 with `reboot=warm`: the next suspend hang did not reset the phone
+  at all (black, no response until a long power press), where every
+  earlier hang reset by itself. Removed again in #136+; the warm reset
+  (PSCI SYSTEM_RESET2) apparently does not complete on this firmware with
+  download mode off. Earlier text, kept for reference: diag #132+ boots with `reboot=warm`: restarts and panics use SYSTEM_RESET2,
   DDR keeps its contents and pstore should show `console-ramoops-0` (and
   `dmesg-ramoops-0` after a panic). Check with a normal restart, then
   `echo c > /proc/sysrq-trigger` as root. A whole-SoC hang reset by the
@@ -910,6 +923,8 @@ instead:
 | #132+ | Zorix A16 | to be tested | diag: `reboot=warm` so pstore survives restarts and panics |
 | #132 | Zorix A16 | Text still vanishes, parts still blink (TLB flush on unmap did not help) | |
 | #134+ | Zorix A16 | to be tested | diag: `dma-coherent` removed from `kgsl_smmu` (non-coherent GPU table walks) |
+| #132 (Wi-Fi on, screen off) | Zorix A16 | Hung black after ~5 min and did not reset (needed a long power press); pm trace ends 4 ms after WLAN suspend | |
+| #136+ | Zorix A16 | to be tested | diag: `reboot=warm` removed again |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
