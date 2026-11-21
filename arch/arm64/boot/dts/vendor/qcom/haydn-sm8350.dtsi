@@ -26,6 +26,18 @@ And public attribution of xiaomi platforms(like venus and so and)
 	};
 };
 
+/*
+ * GPU SMMU page-table walks are not really coherent on this 5.10 port: with
+ * dma-coherent the SMMU is set up for coherent walks, io-pgtable skips
+ * cleaning PTE writes from the CPU cache, and the GPU can walk stale
+ * entries (glyphs and images vanish, worse over time). Without it every PTE
+ * update is cleaned to RAM. From xiaomi-lahaina-devs/5.10-sm8350-H (stage
+ * 2Z-6: "Removed dma-coherent from kgsl_smmu so GPU PTEs flush to RAM").
+ */
+&kgsl_smmu {
+	/delete-property/ dma-coherent;
+};
+
 &soc {
 	gpio_keys {
 		hall_key {
