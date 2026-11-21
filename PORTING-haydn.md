@@ -335,7 +335,10 @@ Notes:
   it is now the boot parameter `ion_force_dma_sync=1` (`core_param`), set in
   diag #104+. If that fixes it, the per-attachment path needs fixing.
 
-* #106 (ion_force_dma_sync=1): still blinking, and a video shows a
+* #106 (ion_force_dma_sync=1) made YouTube show green frames now and
+  then (whole-buffer clean through the heap device on CPU access writes
+  stale lines over video decoder output), so it is off again from diag
+  #110 (the parameter stays, default off). #106 was also still blinking, and a video shows a
   diagonal black wedge across a GPU-rendered page (a quad half drawn), so
   this looks like a format/compression mismatch or early read, not CPU
   cache maintenance. Candidate: UBWC highest bank bit. KGSL uses 16 for
@@ -750,7 +753,7 @@ instead:
 | #102 | Zorix A16 | USB device mode + adb work (UCSI fix). Text/images still blink with GPU coherency off (so not KGSL). Camera HAL aborts in FDHwNode. One spontaneous reboot shortly after first boot (logs pending) | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
 | #102 more | Zorix A16 | USB-C earphones work. BT: 3.2 Mbaud set as 3.125. Two unexplained resets. Camera: CamX FDHwNode abort | |
 | #104+ | Zorix A16 | to be tested | BT UART clock table with 102.4 MHz; diag: ion_force_dma_sync=1, UART debug only on BT UART |
-| #106 | Zorix A16 | BT still turns off; text/images still blink (diagonal black wedge seen) | |
+| #106 | Zorix A16 | BT still turns off; text/images still blink (diagonal black wedge seen); YouTube green frames (from ion_force_dma_sync) | |
 | #108+ | Zorix A16 | to be tested | UBWC bank-bit logging; KGSL access-check spam silenced |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
