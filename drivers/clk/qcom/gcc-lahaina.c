@@ -1325,7 +1325,8 @@ static struct clk_rcg2 gcc_qupv3_wrap2_s4_clk_src = {
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
 			[VDD_LOWER] = 75000000,
-			[VDD_LOW] = 100000000},
+			/* haydn: 102.4 MHz for 3.2 Mbaud BT, as wrap1_s0 */
+			[VDD_LOW] = 120000000},
 	},
 };
 
