@@ -467,7 +467,7 @@ static void sync_bio_end(struct bio *bio)
 	complete(&sync_bio_done);
 }
 
-void haydn_bootlog_sync(void)
+static void bootlog_sync(int lock_tries, long timeout)
 {
 	static char line[1024];
 	size_t len, first, last;
@@ -478,7 +478,7 @@ void haydn_bootlog_sync(void)
 	if (!READ_ONCE(bootlog_flushed) || in_atomic() || irqs_disabled())
 		return;
 	for (tries = 0; !mutex_trylock(&bootlog_lock); tries++) {
-		if (tries >= 20)
+		if (tries >= lock_tries)
 			return;
 		msleep(5);
 	}
@@ -506,7 +506,7 @@ void haydn_bootlog_sync(void)
 	reinit_completion(&sync_bio_done);
 	sync_bio_busy = true;
 	submit_bio(bio);
-	if (wait_for_completion_timeout(&sync_bio_done, HZ / 4)) {
+	if (wait_for_completion_timeout(&sync_bio_done, timeout)) {
 		sync_bio_busy = false;
 		if (first + nr >= last)
 			done = used;
@@ -514,7 +514,23 @@ void haydn_bootlog_sync(void)
 out:
 	mutex_unlock(&bootlog_lock);
 }
+
+void haydn_bootlog_sync(void)
+{
+	bootlog_sync(20, HZ / 4);
+}
 EXPORT_SYMBOL_GPL(haydn_bootlog_sync);
+
+/*
+ * For the PM core's per-device suspend markers: hundreds of calls per
+ * suspend, some after UFS is already suspended. Never wait for the lock,
+ * wait at most 50 ms for the write, and skip outright while an earlier
+ * write is still pending (storage asleep).
+ */
+void haydn_bootlog_sync_fast(void)
+{
+	bootlog_sync(0, HZ / 20);
+}
 
 static int panic_flusher_fn(void *unused)
 {

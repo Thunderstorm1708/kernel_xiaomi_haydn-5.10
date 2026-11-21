@@ -33,6 +33,7 @@
 #include <trace/events/power.h>
 #include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
+#include <linux/haydn_bootlog.h>
 #include <linux/devfreq.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
@@ -475,6 +476,29 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, int error,
 		  usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
 }
 
+/*
+ * haydn: the phone hangs (whole SoC, no oops) during system suspend right
+ * after WLAN suspends. With haydn_pm_trace=1, log every suspend-direction
+ * device callback before and after it runs and push the line to logdump
+ * at once, so the last "haydn-pm: call" line names the device. Writes stop
+ * landing once UFS itself is suspended; then the last line is UFS.
+ */
+static bool haydn_pm_trace;
+core_param(haydn_pm_trace, haydn_pm_trace, bool, 0644);
+
+static void haydn_pm_mark(struct device *dev, pm_message_t state,
+			  const char *info, pm_callback_t cb,
+			  const char *what, int error)
+{
+	if (!READ_ONCE(haydn_pm_trace))
+		return;
+	if (!(state.event & (PM_EVENT_SUSPEND | PM_EVENT_FREEZE)))
+		return;
+	pr_info("haydn-pm: %s %s %s %s %ps %d\n", what, info ? info : "",
+		dev_driver_string(dev), dev_name(dev), cb, error);
+	haydn_bootlog_sync_fast();
+}
+
 static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 			    pm_message_t state, const char *info)
 {
@@ -487,9 +511,11 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 	calltime = initcall_debug_start(dev, cb);
 
 	pm_dev_dbg(dev, state, info);
+	haydn_pm_mark(dev, state, info, cb, "call", 0);
 	trace_device_pm_callback_start(dev, info, state.event);
 	error = cb(dev);
 	trace_device_pm_callback_end(dev, error);
+	haydn_pm_mark(dev, state, info, cb, "done", error);
 	suspend_report_result(cb, error);
 
 	initcall_debug_report(dev, calltime, cb, error);
