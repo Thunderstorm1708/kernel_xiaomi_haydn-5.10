@@ -600,6 +600,23 @@ Notes:
 * Workaround until fixed: turn Wi-Fi off before leaving the phone with the
   screen off (#52 ran 20 min with Wi-Fi off and no hang).
 
+### pstore / ramoops
+
+* The ramoops carve-out (`haydn-sm8350.dtsi`, 8 MiB at 0xb0000000, no-map)
+  registers fine (`ramoops: using 0x800000@0xb0000000`), and Android mounts
+  `/sys/fs/pstore`, but it was empty even after a normal restart.
+* Cause: every restart was a cold reset, which powers DDR down. Like the
+  5.4 driver, `qcom-dload-mode` only sets `reboot_mode = REBOOT_WARM` when a
+  download/dump mode is armed; with dump off (`DOWNLOAD_MODE_DEFAULT` unset)
+  PSCI uses SYSTEM_RESET (cold), not SYSTEM_RESET2 (warm). The 5.4 lahaina
+  DT has no `qcom,pshold` node either, so `msm-poweroff` (and its
+  `qcom,force-warm-reboot`) is not used on either kernel.
+* Diag #132+ boots with `reboot=warm`: restarts and panics use SYSTEM_RESET2,
+  DDR keeps its contents and pstore should show `console-ramoops-0` (and
+  `dmesg-ramoops-0` after a panic). Check with a normal restart, then
+  `echo c > /proc/sysrq-trigger` as root. A whole-SoC hang reset by the
+  watchdog goes through TZ instead and may still be cold.
+
 ### fastrpc (adsprpc) and sensors
 
 * msm-5.10 adsprpc refuses `FASTRPC_INIT_ATTACH_SENSORS` with `-ENOTCONN` until
@@ -878,6 +895,8 @@ instead:
 | #128+ | Zorix A16 | to be tested | diag: `haydn_pm_trace=1` per-device suspend markers with logdump writes |
 | #125 (Wi-Fi off, mobile data on) | Zorix A16 | Also reset with screen off on mobile data only; that crash log was lost (bootlog slot bug below) | |
 | #130+ | Zorix A16 | to be tested | bootlog waits for both logdump partitions before choosing |
+| #130 | Zorix A16 | `/sys/fs/pstore` empty even after a normal restart | |
+| #132+ | Zorix A16 | to be tested | diag: `reboot=warm` so pstore survives restarts and panics |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
