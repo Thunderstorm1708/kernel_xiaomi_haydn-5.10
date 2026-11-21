@@ -623,6 +623,19 @@ Notes:
   WLAN arms WoW, while the CPU does unrelated work. The hang also happens
   with Wi-Fi off and mobile data on (that log was lost), and not with both
   off.
+* #138, `pm_async=0` (seq 44): the trace runs in order up to `call bus sd
+  0:0:0:4 scsi_bus_suspend`, the UFS LUN that holds sde59; nothing can be
+  written after that, so all earlier "last lines" were just storage going
+  to sleep. The phone also hangs a few seconds after screen off with Wi-Fi
+  and data both off.
+* `mem_sleep=s2idle` still hangs. `/sys/power/pm_test` bisection (root,
+  `CONFIG_PM_DEBUG`): `core`, `platform` and `devices` all hang, `freezer`
+  does not. So a device in the suspend phase (or its resume, or the 5 s
+  wait with devices suspended) hangs, and it comes after the UFS disks.
+* Diag #140+: `haydn_pm_keep_ufs` (core_param 0644, default 0) skips every
+  PM callback of `sd` and `ufshcd*` devices, so storage stays up and the
+  trace can follow later devices. If the hang goes away with it set, UFS
+  suspend itself is the suspect.
 * Diag #128+: `haydn_pm_trace=1` (`core_param`, 0644, live in
   `/sys/module/kernel/parameters/haydn_pm_trace`) logs every
   suspend-direction device callback in `dpm_run_callback()` before
@@ -941,6 +954,8 @@ instead:
 | #132 (Wi-Fi on, screen off) | Zorix A16 | Hung black after ~5 min and did not reset (needed a long power press); pm trace ends 4 ms after WLAN suspend | |
 | #136+ | Zorix A16 | to be tested | diag: `reboot=warm` removed again |
 | #138 | Zorix A16 | **Missing text and blinking fixed** | KGSL cmd/obj/sync lists copied the 5.4 way; non-coherent `kgsl_smmu` walks (both moved to main) |
+| #138 (pm_test) | Zorix A16 | Hangs at pm_test core/platform/devices, not at freezer; s2idle hangs too | |
+| #140+ | Zorix A16 | to be tested | diag: `haydn_pm_keep_ufs` switch |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
