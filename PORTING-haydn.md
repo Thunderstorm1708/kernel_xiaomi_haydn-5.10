@@ -368,6 +368,20 @@ Notes:
   after boot and goes wrong after a while. The phone also froze at a
   screen timeout and reset itself. Both switches default to on again in
   #116+ (still settable with `msm_kgsl.gpu_ifpc=0` / `gpu_preempt=0`).
+* Live root tests on #125 (KernelSU), each one changed alone:
+  `drop_caches` + `compact_memory` while text was fine did not make it
+  vanish (not page migration/reclaim under the GPU);
+  `force_rail_on/clk_on/bus_on/no_nap=1` did not help (not GPU power
+  collapse); `debug.hwui.renderer=skiagl` + `stop; start` did not help
+  (not the Vulkan path, it is below both GL and Vulkan). Scrolling also
+  shows each glyph/icon doubled with an offset, seen by eye too.
+* Suspect: stale GPU TLB. `_iopgtbl_unmap()` skips the TLB flush when the
+  GPU is in slumber, assuming the GPU SMMU lost its TLB with the GPU power.
+  If the SMMU stays powered on the 5.10 port, freed and reused pages stay
+  mapped in the TLB and the GPU reads someone else's data: glyphs blank,
+  more over time, independent of the API. Diag #126+ has
+  `msm_kgsl.tlb_flush_slumber` (0644, default 0, diag cmdline 1) to flush
+  always; toggle live through `/sys/module/msm_kgsl/parameters/`.
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -835,6 +849,8 @@ instead:
 | #120+ | Zorix A16 | to be tested | diag: KernelSU-Next v3.4.2 built in |
 | #122 | Zorix A16 | KernelSU-Next works (root in Termux). Camera: same FDHwNode abort; CamX log masks did not reach the HAL (bind mount made in Termux's mount namespace; use `su -mm`). Repeated resets with the screen off, both at WLAN WoW enable (see WLAN) | |
 | #124+ | Zorix A16 | to be tested | diag: `haydn-wow:` markers with synchronous logdump writes; `pcie_aspm.policy=powersave`; `camera.debug_mdl` dropped (it overflowed dmesg) |
+| #125 | Zorix A16 | Reset about 1 min after screen off with Wi-Fi on (same WoW hang). Text tests: see Missing text | |
+| #126+ | Zorix A16 | to be tested | diag: `msm_kgsl.tlb_flush_slumber=1` (GPU TLB flush on unmap even in slumber) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
