@@ -319,6 +319,12 @@ Notes:
   after the switch. wrap2 s4 now uses the wrap1_s0 table (has 102.4 MHz =
   51.2 MHz x 2). If the bootloader left DFS on for this RCG the HW table wins;
   the `clk_rate` in the next log tells (#104+).
+* #106: the table change works (102.4 MHz chosen, no freq_diff) but
+  `SE clock set_rate error:-16` (+WARN): wrap2 s4's vdd table caps
+  VDD_LOW at 100 MHz. wrap1_s0 allows 120 MHz at VDD_LOW, so wrap2 s4 now
+  does too (#110+). Also seen: right after the set-baud command the host
+  receives one garbage byte (`fe`/`fc`) at 115200, i.e. the controller has
+  already switched and answers at 3.2 Mbaud before the host follows.
 * The UART debug mirror is limited to the BT UART (`890000` in the device
   name), never the console UART.
 
