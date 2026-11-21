@@ -547,6 +547,28 @@ Notes:
 * Cost: more idle and standby power. Next step: trace
   `msm_pcie_drv_suspend`/resume, the ADSP DRV handshake and the pci-msm link
   suspend, then set `wlan_pcie_pm` back to 1.
+* **Still hangs with the link kept up and L1ss off (#120+/#122).** With
+  `wlan_pcie_pm=0` (link in D0) and `qcom,no-l1ss-supported` on PCIe0 (diag
+  since #82), two resets in one afternoon, both at screen-off system suspend.
+  Both logs end on `pmo_core_enable_wow_in_fw: system suspend wow` with no
+  `bus suspend succeeded` (normally 28 ms later). One was 60 s after boot, so
+  a phone left with the screen off can reset over and over (it got warm). No
+  WLAN firmware timeouts before either hang, no oops, nothing in pstore (no
+  `previous boot` record: ramoops did not survive the reset). So the SoC hangs
+  while the WOW_ENABLE command is sent or its ack is awaited.
+* Diag #124+:
+  * `haydn-wow:` markers before and after each step of
+    `__wlan_hdd_bus_suspend` and `pmo_core_enable_wow_in_fw` (send, ack wait,
+    hif early/bus suspend). Each marker forces a logdump write through
+    `haydn_bootlog_sync()`, so the last `haydn-wow:` line in logdump names the
+    step that hung. The write is bounded (100 ms for the lock, 250 ms for the
+    bio, then it skips) because UFS can be suspending in parallel.
+  * `pcie_aspm.policy=powersave`: `CONFIG_PCIEASPM_POWER_SUPERSAVE=y` (kept
+    from the 5.4 config) lets the PCI core enable L1 substates on the
+    QCA6490 side by itself, whatever pci-msm does. powersave keeps L1 and
+    drops L1ss, which also takes the core's L1.2 LTR math out of the picture.
+* Workaround until fixed: turn Wi-Fi off before leaving the phone with the
+  screen off (#52 ran 20 min with Wi-Fi off and no hang).
 
 ### fastrpc (adsprpc) and sensors
 
@@ -811,6 +833,8 @@ instead:
 | #116+ | Zorix A16 | to be tested | IFPC/preemption back on |
 | #118+ | Zorix A16 | to be tested | diag: DPM watchdog 5 s + pstore readback into bootlog |
 | #120+ | Zorix A16 | to be tested | diag: KernelSU-Next v3.4.2 built in |
+| #122 | Zorix A16 | KernelSU-Next works (root in Termux). Camera: same FDHwNode abort; CamX log masks did not reach the HAL (bind mount made in Termux's mount namespace; use `su -mm`). Repeated resets with the screen off, both at WLAN WoW enable (see WLAN) | |
+| #124+ | Zorix A16 | to be tested | diag: `haydn-wow:` markers with synchronous logdump writes; `pcie_aspm.policy=powersave`; `camera.debug_mdl` dropped (it overflowed dmesg) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
