@@ -115,7 +115,12 @@ static void walt_resume(void)
 
 static int walt_suspend(void)
 {
-	ktime_last = ktime_get();
+	/*
+	 * walt's syscore ops are registered before timekeeping's, so they
+	 * run after timekeeping_suspend(); ktime_get() WARNs there. The
+	 * fast monotonic clock is safe to read at this point.
+	 */
+	ktime_last = ns_to_ktime(ktime_get_mono_fast_ns());
 	walt_ktime_suspended = true;
 	return 0;
 }
