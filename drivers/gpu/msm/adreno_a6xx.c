@@ -208,6 +208,10 @@ int a6xx_init(struct adreno_device *adreno_dev)
 			adreno_dev->highest_bank_bit = 15;
 	}
 
+	dev_info(&adreno_dev->dev.pdev->dev,
+		 "haydn-ubwc: gpu ddr_type %d highest_bank_bit %u\n",
+		 of_fdt_get_ddrtype(), adreno_dev->highest_bank_bit);
+
 	a6xx_crashdump_init(adreno_dev);
 
 	return adreno_allocate_global(KGSL_DEVICE(adreno_dev),

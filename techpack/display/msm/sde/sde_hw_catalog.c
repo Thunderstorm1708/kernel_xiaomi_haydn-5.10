@@ -3771,6 +3771,10 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 		}
 	}
 
+	pr_info("haydn-ubwc: sde ddr_type %d highest_bank_bit %u ubwc_ver 0x%x\n",
+		of_fdt_get_ddrtype(), cfg->mdp[0].highest_bank_bit,
+		cfg->ubwc_version);
+
 	cfg->macrotile_mode = props->exists[MACROTILE_MODE] ?
 			PROP_VALUE_ACCESS(props->values, MACROTILE_MODE, 0) :
 			DEFAULT_SDE_UBWC_MACROTILE_MODE;
