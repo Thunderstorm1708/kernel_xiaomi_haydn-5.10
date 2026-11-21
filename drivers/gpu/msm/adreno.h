@@ -114,6 +114,9 @@
  * ADRENO_FEATURE - return true if the specified feature is supported by the GPU
  * core
  */
+extern bool adreno_gpu_ifpc;
+extern bool adreno_gpu_preempt;
+
 #define ADRENO_FEATURE(_dev, _bit) \
 	((_dev)->gpucore->features & (_bit))
 
