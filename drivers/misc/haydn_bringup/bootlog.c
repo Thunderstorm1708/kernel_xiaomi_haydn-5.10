@@ -11,6 +11,7 @@
  *   dd if=/dev/block/by-name/logdump bs=1M count=16 | tr -d '\0'
  */
 #include <linux/bio.h>
+#include <linux/completion.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
@@ -446,6 +447,74 @@ void haydn_bootlog_flush_now(void)
 		flush();
 	mutex_unlock(&bootlog_lock);
 }
+
+EXPORT_SYMBOL_GPL(haydn_bootlog_flush_now);
+
+/*
+ * Like haydn_bootlog_flush_now(), but for sleepable callers that want the
+ * line they just printed on storage before a step that may hang the whole
+ * SoC (WLAN WoW at system suspend): the last marker in logdump then names
+ * the step. Bounded, because it runs inside system suspend where UFS may
+ * already be suspending in parallel (async suspend): wait at most 100 ms
+ * for the lock and 250 ms for the write, then give up instead of blocking.
+ */
+static DECLARE_COMPLETION(sync_bio_done);
+static bool sync_bio_busy;
+
+static void sync_bio_end(struct bio *bio)
+{
+	bio_put(bio);
+	complete(&sync_bio_done);
+}
+
+void haydn_bootlog_sync(void)
+{
+	static char line[1024];
+	size_t len, first, last;
+	unsigned int nr, i;
+	struct bio *bio;
+	int tries;
+
+	if (!READ_ONCE(bootlog_flushed) || in_atomic() || irqs_disabled())
+		return;
+	for (tries = 0; !mutex_trylock(&bootlog_lock); tries++) {
+		if (tries >= 20)
+			return;
+		msleep(5);
+	}
+	if (sync_bio_busy) {
+		if (!try_wait_for_completion(&sync_bio_done))
+			goto out;
+		sync_bio_busy = false;
+	}
+	while (kmsg_dump_get_line(&sync_iter, false, line, sizeof(line), &len))
+		append(line, len);
+	if (!log_bdev || used <= done)
+		goto out;
+	first = done / PAGE_SIZE;
+	last = DIV_ROUND_UP(used, PAGE_SIZE);
+	nr = min_t(size_t, last - first, BIO_MAX_PAGES);
+	bio = bio_alloc(GFP_NOIO, nr);
+	if (!bio)
+		goto out;
+	bio_set_dev(bio, log_bdev);
+	bio->bi_opf = REQ_OP_WRITE | REQ_SYNC | REQ_FUA;
+	bio->bi_iter.bi_sector = (sector_t)first << (PAGE_SHIFT - SECTOR_SHIFT);
+	for (i = 0; i < nr; i++)
+		bio_add_page(bio, pages[first + i], PAGE_SIZE, 0);
+	bio->bi_end_io = sync_bio_end;
+	reinit_completion(&sync_bio_done);
+	sync_bio_busy = true;
+	submit_bio(bio);
+	if (wait_for_completion_timeout(&sync_bio_done, HZ / 4)) {
+		sync_bio_busy = false;
+		if (first + nr >= last)
+			done = used;
+	}
+out:
+	mutex_unlock(&bootlog_lock);
+}
+EXPORT_SYMBOL_GPL(haydn_bootlog_sync);
 
 static int panic_flusher_fn(void *unused)
 {

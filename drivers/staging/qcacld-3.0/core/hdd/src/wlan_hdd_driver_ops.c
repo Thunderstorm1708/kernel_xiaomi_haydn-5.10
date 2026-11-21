@@ -48,6 +48,13 @@
 #include <qdf_notifier.h>
 #include <qdf_hang_event_notifier.h>
 #include "wlan_hdd_thermal.h"
+#include <linux/haydn_bootlog.h>
+
+/* haydn: marker + synchronous logdump write before steps that may hang */
+#define HAYDN_WOW_MARK(fmt, ...) do { \
+	pr_info("haydn-wow: " fmt "\n", ##__VA_ARGS__); \
+	haydn_bootlog_sync(); \
+} while (0)
 
 #ifdef MODULE
 #ifdef WLAN_WEAR_CHIPSET
@@ -1246,12 +1253,14 @@ static int __wlan_hdd_bus_suspend(struct wow_enable_params wow_params)
 		goto resume_cdp;
 	}
 
+	HAYDN_WOW_MARK("hif early suspend");
 	err = hif_bus_early_suspend(hif_ctx);
 	if (err) {
 		hdd_err("Failed hif bus early suspend");
 		goto resume_cdp;
 	}
 
+	HAYDN_WOW_MARK("pmo bus suspend");
 	status = ucfg_pmo_psoc_bus_suspend_req(hdd_ctx->psoc,
 					       QDF_SYSTEM_SUSPEND,
 					       &pmo_params);
@@ -1263,7 +1272,9 @@ static int __wlan_hdd_bus_suspend(struct wow_enable_params wow_params)
 
 	hif_system_pm_set_state_suspended(hif_ctx);
 
+	HAYDN_WOW_MARK("hif bus suspend");
 	err = hif_bus_suspend(hif_ctx);
+	HAYDN_WOW_MARK("hif bus suspend done (%d)", err);
 	if (err) {
 		hdd_err("Failed hif bus suspend: %d", err);
 		goto resume_pmo;

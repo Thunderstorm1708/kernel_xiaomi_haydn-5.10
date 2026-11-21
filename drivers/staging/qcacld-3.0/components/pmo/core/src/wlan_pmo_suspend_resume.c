@@ -41,6 +41,13 @@
 #include "cfg_mlme_sap.h"
 #include "cfg_ucfg_api.h"
 #include "cdp_txrx_bus.h"
+#include <linux/haydn_bootlog.h>
+
+/* haydn: marker + synchronous logdump write before steps that may hang */
+#define HAYDN_WOW_MARK(fmt, ...) do { \
+	pr_info("haydn-wow: " fmt "\n", ##__VA_ARGS__); \
+	haydn_bootlog_sync(); \
+} while (0)
 
 /**
  * pmo_core_get_vdev_dtim_period() - Get vdev dtim period
@@ -826,7 +833,9 @@ pmo_core_enable_wow_in_fw(struct wlan_objmgr_psoc *psoc,
 		pmo_debug("forced DTIM enabled");
 		param.flags |= WMI_WOW_FLAG_FORCED_DTIM_ON_SYS_SUSPEND;
 	}
+	HAYDN_WOW_MARK("send WOW_ENABLE");
 	status = pmo_tgt_psoc_send_wow_enable_req(psoc, &param);
+	HAYDN_WOW_MARK("WOW_ENABLE sent (%d), waiting for ack", status);
 	if (status != QDF_STATUS_SUCCESS) {
 		pmo_err("Failed to enable wow in fw");
 		goto out;
@@ -847,6 +856,7 @@ pmo_core_enable_wow_in_fw(struct wlan_objmgr_psoc *psoc,
 		goto out;
 	}
 
+	HAYDN_WOW_MARK("WOW_ENABLE ack wait done (%d)", status);
 	if (pmo_core_get_wow_nack(psoc_ctx)) {
 		reason_code = pmo_core_get_wow_reason_code(psoc_ctx);
 		pmo_err("FW not ready to WOW reason code: %d", reason_code);
