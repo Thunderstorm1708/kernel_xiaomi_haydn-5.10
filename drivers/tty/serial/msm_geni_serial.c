@@ -183,7 +183,9 @@ static void __ftrace_dbg(struct device *dev, const char *fmt, ...)
 /*
  * haydn: the ROM has no debugfs ipc_logging, so the BT HAL cannot dump the
  * UART logs. With msm_geni_serial.haydn_uart_dbg=1 (diag builds) the
- * control/power messages (not the per-byte rx/tx dumps) also go to dmesg.
+ * control/power messages (not the per-byte rx/tx dumps) of the Bluetooth
+ * UART (se18 @ 0x890000) also go to dmesg. Never for the console UART:
+ * printing from inside its own (locked) paths can deadlock (#102 resets).
  */
 static bool haydn_uart_dbg;
 module_param(haydn_uart_dbg, bool, 0644);
@@ -192,7 +194,8 @@ module_param(haydn_uart_dbg, bool, 0644);
 	ipc_log_string(ctxt, fmt);		\
 	ftrace_dbg(dev, fmt);			\
 	if (haydn_uart_dbg && !strstr(#ctxt, "_rx") &&	\
-	    !strstr(#ctxt, "_tx"))			\
+	    !strstr(#ctxt, "_tx") && (dev) &&		\
+	    strstr(dev_name(dev), "890000"))		\
 		dev_info(dev, "haydn-uart: " fmt);	\
 } while (0)					\
 

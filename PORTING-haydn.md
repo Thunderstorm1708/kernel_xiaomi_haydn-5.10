@@ -311,6 +311,37 @@ Notes:
   ipc_logging, which this ROM has no debugfs for, so diag #102+ mirrors the
   control/power (not rx/tx data) messages to dmesg with
   `msm_geni_serial.haydn_uart_dbg=1` (`haydn-uart:` lines).
+* #102 UART log: the HAL sends EDL set-baudrate (`01 48 fc 01 11`) at
+  115200, then sets the host to 3.2 Mbaud: `set_termios src_clk
+  freq_diff:1200000 baud:3200000 clk_rate:100000000 clk_div:2`. SE18's
+  clock (wrap2 s4) uses `ftbl_gcc_qupv3_wrap0_s0_clk_src`, which stops at
+  100 MHz, so the port ran at 3.125 Mbaud (-2.3%) and nothing was received
+  after the switch. wrap2 s4 now uses the wrap1_s0 table (has 102.4 MHz =
+  51.2 MHz x 2). If the bootloader left DFS on for this RCG the HW table wins;
+  the `clk_rate` in the next log tells (#104+).
+* The UART debug mirror is limited to the BT UART (`890000` in the device
+  name), never the console UART.
+
+### Missing text / blinking images: ION cache maintenance test
+
+* #102 (KGSL range fix + GPU I/O coherency off): text and images (e.g. a
+  shopping app's product grid) still drop out, so it is not KGSL's own
+  memory. The 5.4 vendor stack allocates graphics buffers from `/dev/ion`
+  (msm-5.4 ION ported in `drivers/staging/android/ion`). Its
+  begin/end_cpu_access only sync through attachments that are mapped at
+  that moment (`a->dma_mapped`), so CPU writes done while nothing is mapped
+  are never cleaned. The `CONFIG_ION_FORCE_DMA_SYNC` path (whole buffer via
+  the heap device, DMA addresses prepared at allocation) had no Kconfig;
+  it is now the boot parameter `ion_force_dma_sync=1` (`core_param`), set in
+  diag #104+. If that fixes it, the per-attachment path needs fixing.
+
+### Spontaneous resets during suspend (#102)
+
+* One reset right after the first boot and one during a full suspend
+  (log ends after `printk: Suspending console(s)`; next boot PMIC: PS_HOLD
+  warm reset). bootlog cannot flush once suspend has started. ramoops is
+  active (`ramoops: using 0x800000@0xb0000000`): after an unexpected
+  reset, boot straight to OrangeFox and copy `/sys/fs/pstore/*`.
 
 ### GPU cache maintenance (missing UI text)
 
@@ -702,6 +733,8 @@ instead:
 | #96 | Zorix A16 | Lag/stutter fixed (CPUs stay online), slow wake / multi-press fixed, VoIP audio in video calls works. Still open: missing text and blinking images (GPU texture data), USB-C earphones/DAC not detected (audio stays on speaker), camera (also video calls) | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
 | #96 logs | Zorix A16 | CPUs online all boot (85/85 snapshots). USB: one host session then UCSI GET_PDOS timeout, role never changes again; DAC -71. BT: baud switch stuck | |
 | #102 | Zorix A16 | USB device mode + adb work (UCSI fix). Text/images still blink with GPU coherency off (so not KGSL). Camera HAL aborts in FDHwNode. One spontaneous reboot shortly after first boot (logs pending) | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
+| #102 more | Zorix A16 | USB-C earphones work. BT: 3.2 Mbaud set as 3.125. Two unexplained resets. Camera: CamX FDHwNode abort | |
+| #104+ | Zorix A16 | to be tested | BT UART clock table with 102.4 MHz; diag: ion_force_dma_sync=1, UART debug only on BT UART |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
