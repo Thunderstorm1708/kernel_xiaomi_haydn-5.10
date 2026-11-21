@@ -636,6 +636,19 @@ Notes:
   PM callback of `sd` and `ufshcd*` devices, so storage stays up and the
   trace can follow later devices. If the hang goes away with it set, UFS
   suspend itself is the suspect.
+* #142 results: `haydn_pm_keep_ufs=1` + `pm_test=devices` passed three
+  times; real suspend with it hung at or after the noirq phase (last line
+  `call noirq ... cnss_pci_suspend_noirq`; all suspend and late callbacks,
+  IPA, rmnet_ipa, clock controllers, rpmh, returned 0). UFS `spm_lvl` 1
+  and 2 (instead of 3) both still hang in real suspend.
+* What fits every result: bootlog itself. Its thread is not freezable and
+  flushes to logdump every 5-50 ms through suspend, and the hang needs UFS
+  to be suspended (freezer test fine, devices test with UFS kept up fine).
+  bootlog is in haydn_GKI.config, so main has it too. Diag #144+ pauses
+  all logdump writes from PM_SUSPEND_PREPARE to PM_POST_SUSPEND
+  (`bootlog.pause_suspend`, default 1, 0644). If the hangs stop, that is
+  the fix (and the per-device trace is no longer written past
+  PM_SUSPEND_PREPARE).
 * Diag #128+: `haydn_pm_trace=1` (`core_param`, 0644, live in
   `/sys/module/kernel/parameters/haydn_pm_trace`) logs every
   suspend-direction device callback in `dpm_run_callback()` before
@@ -955,7 +968,8 @@ instead:
 | #136+ | Zorix A16 | to be tested | diag: `reboot=warm` removed again |
 | #138 | Zorix A16 | **Missing text and blinking fixed** | KGSL cmd/obj/sync lists copied the 5.4 way; non-coherent `kgsl_smmu` walks (both moved to main) |
 | #138 (pm_test) | Zorix A16 | Hangs at pm_test core/platform/devices, not at freezer; s2idle hangs too | |
-| #140+ | Zorix A16 | to be tested | diag: `haydn_pm_keep_ufs` switch |
+| #142 | Zorix A16 | keep_ufs + pm_test devices passes; real suspend still hangs (also with UFS spm_lvl 1 and 2) | `haydn_pm_keep_ufs` switch |
+| #144+ | Zorix A16 | to be tested | diag: bootlog pauses logdump writes during suspend |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
