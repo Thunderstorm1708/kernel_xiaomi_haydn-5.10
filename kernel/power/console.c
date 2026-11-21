@@ -110,6 +110,14 @@ static bool pm_vt_switch(void)
 	struct pm_vt_switch *entry;
 	bool ret = true;
 
+	/*
+	 * haydn: Android draws through DRM/KMS and never uses the VT console,
+	 * but with no driver registered the default is to switch VTs around
+	 * suspend, which cost 1-6 s per resume in pm_restore_console().
+	 */
+	if (IS_ENABLED(CONFIG_ANDROID))
+		return false;
+
 	mutex_lock(&vt_switch_mutex);
 	if (list_empty(&pm_vt_switch_list))
 		goto out;
