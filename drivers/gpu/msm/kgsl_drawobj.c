@@ -1301,6 +1301,26 @@ int kgsl_drawobj_cmd_add_ibdesc_list(struct kgsl_device *device,
 	return 0;
 }
 
+/*
+ * haydn: copy one list element the way msm-5.4 KGSL did (min of the kernel
+ * and user sizes, extra user bytes ignored). The 5.4-era vendor GPU driver
+ * on haydn gets thousands of IOCTL_KGSL_GPU_COMMAND -EFAULTs per boot with
+ * the stricter copy_struct_from_user(), which fails (-E2BIG, reported as
+ * -EFAULT) when a larger user element has non-zero trailing bytes; every
+ * failure drops a draw submission (missing text, blinking parts).
+ */
+static int kgsl_list_copy(void *dst, size_t ksize, const void __user *src,
+		size_t usize)
+{
+	size_t copy = min(ksize, usize);
+
+	if (!copy)
+		return -EINVAL;
+	if (copy < ksize)
+		memset(dst + copy, 0, ksize - copy);
+	return copy_from_user(dst, src, copy) ? -EFAULT : 0;
+}
+
 int kgsl_drawobj_sync_add_syncpoints(struct kgsl_device *device,
 		struct kgsl_drawobj_sync *syncobj, void __user *ptr, int count)
 {
@@ -1378,7 +1398,7 @@ int kgsl_drawobj_cmd_add_cmdlist(struct kgsl_device *device,
 		return ret;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&obj, sizeof(obj), ptr, size))
+		if (kgsl_list_copy(&obj, sizeof(obj), ptr, size))
 			return -EFAULT;
 
 		/* Sanity check the flags */
@@ -1417,7 +1437,7 @@ int kgsl_drawobj_cmd_add_memlist(struct kgsl_device *device,
 		return ret;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&obj, sizeof(obj), ptr, size))
+		if (kgsl_list_copy(&obj, sizeof(obj), ptr, size))
 			return -EFAULT;
 
 		if (!(obj.flags & KGSL_OBJLIST_MEMOBJ)) {
@@ -1495,7 +1515,7 @@ int kgsl_drawobj_sync_add_synclist(struct kgsl_device *device,
 		return -ENOMEM;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&syncpoint, sizeof(syncpoint), ptr, size))
+		if (kgsl_list_copy(&syncpoint, sizeof(syncpoint), ptr, size))
 			return -EFAULT;
 
 		sync.type = syncpoint.type;

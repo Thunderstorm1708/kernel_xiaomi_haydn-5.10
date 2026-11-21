@@ -2166,6 +2166,7 @@ long kgsl_ioctl_gpu_command(struct kgsl_device_private *dev_priv,
 	unsigned int type;
 	long result;
 	unsigned int i = 0;
+	const char *stage = "input";
 
 	type = _process_command_input(device, param->flags, param->numcmds,
 			param->numobjs, param->numsyncs);
@@ -2187,6 +2188,7 @@ long kgsl_ioctl_gpu_command(struct kgsl_device_private *dev_priv,
 
 		drawobj[i++] = DRAWOBJ(syncobj);
 
+		stage = "synclist";
 		result = kgsl_drawobj_sync_add_synclist(device, syncobj,
 				u64_to_user_ptr(param->synclist),
 				param->syncsize, param->numsyncs);
@@ -2209,12 +2211,14 @@ long kgsl_ioctl_gpu_command(struct kgsl_device_private *dev_priv,
 
 		drawobj[i++] = DRAWOBJ(cmdobj);
 
+		stage = "cmdlist";
 		result = kgsl_drawobj_cmd_add_cmdlist(device, cmdobj,
 			u64_to_user_ptr(param->cmdlist),
 			param->cmdsize, param->numcmds);
 		if (result)
 			goto done;
 
+		stage = "memlist";
 		result = kgsl_drawobj_cmd_add_memlist(device, cmdobj,
 			u64_to_user_ptr(param->objlist),
 			param->objsize, param->numobjs);
@@ -2227,6 +2231,7 @@ long kgsl_ioctl_gpu_command(struct kgsl_device_private *dev_priv,
 				~(unsigned long)KGSL_DRAWOBJ_PROFILING;
 
 		if (type & CMDOBJ_TYPE) {
+			stage = "reclaim";
 			result = kgsl_reclaim_to_pinned_state(
 					dev_priv->process_priv);
 			if (result)
@@ -2234,10 +2239,17 @@ long kgsl_ioctl_gpu_command(struct kgsl_device_private *dev_priv,
 		}
 	}
 
+	stage = "queue";
 	result = device->ftbl->queue_cmds(dev_priv, context, drawobj,
 				i, &param->timestamp);
 
 done:
+	if (result == -EFAULT)
+		dev_err_ratelimited(device->dev,
+			"gpu_command -EFAULT at %s: ctx %u flags 0x%llx cmd %u x %u obj %u x %u sync %u x %u\n",
+			stage, param->context_id, param->flags,
+			param->numcmds, param->cmdsize, param->numobjs,
+			param->objsize, param->numsyncs, param->syncsize);
 	/*
 	 * -EPROTO is a "success" error - it just tells the user that the
 	 * context had previously faulted
