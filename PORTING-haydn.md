@@ -581,6 +581,22 @@ Notes:
     from the 5.4 config) lets the PCI core enable L1 substates on the
     QCA6490 side by itself, whatever pci-msm does. powersave keeps L1 and
     drops L1ss, which also takes the core's L1.2 LTR math out of the picture.
+* #125 result: three more resets with Wi-Fi on, the last one with
+  `/sys/power/pm_async=0` (devices suspend one at a time, so it is not an
+  async ordering race). Every time the markers get through the whole WLAN
+  part: `WOW_ENABLE sent (0)`, `ack wait done (0)`, `hif bus suspend done
+  (0)`. So WoW itself works; the SoC hangs in a later suspend step, within
+  the ~50 ms before the bootlog thread's next write (earlier logs ended on
+  `system suspend wow` only because of that write interval).
+* Diag #128+: `haydn_pm_trace=1` (`core_param`, 0644, live in
+  `/sys/module/kernel/parameters/haydn_pm_trace`) logs every
+  suspend-direction device callback in `dpm_run_callback()` before
+  (`haydn-pm: call <phase> <driver> <device> <callback>`) and after
+  (`haydn-pm: done ... <error>`), each followed by
+  `haydn_bootlog_sync_fast()` (no lock wait, 50 ms bio wait, skipped while
+  an earlier write is pending). The last `call` without a `done` is the
+  device that hangs. If the last lines are UFS, storage went to sleep first
+  and the hang is later (late/noirq phase, syscore or PSCI).
 * Workaround until fixed: turn Wi-Fi off before leaving the phone with the
   screen off (#52 ran 20 min with Wi-Fi off and no hang).
 
@@ -851,6 +867,8 @@ instead:
 | #124+ | Zorix A16 | to be tested | diag: `haydn-wow:` markers with synchronous logdump writes; `pcie_aspm.policy=powersave`; `camera.debug_mdl` dropped (it overflowed dmesg) |
 | #125 | Zorix A16 | Reset about 1 min after screen off with Wi-Fi on (same WoW hang). Text tests: see Missing text | |
 | #126+ | Zorix A16 | to be tested | diag: `msm_kgsl.tlb_flush_slumber=1` (GPU TLB flush on unmap even in slumber) |
+| #125 (pm_async=0) | Zorix A16 | Still resets ~2-3 min after screen off with Wi-Fi on; markers show WoW completes | |
+| #128+ | Zorix A16 | to be tested | diag: `haydn_pm_trace=1` per-device suspend markers with logdump writes |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
