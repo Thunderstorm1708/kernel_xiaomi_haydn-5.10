@@ -598,6 +598,17 @@ Notes:
   everything about 1 s later without ever sending ACQUIRE_HW, and the
   kernel logs no error. The failing step is in CamX userspace; it needs
   CamX logs (`/vendor/etc/camera/camxoverridesettings.txt` log masks).
+* #102 logcat (via adb, no root): the session gets as far as capture
+  requests 70-75 (no results), then the provider aborts itself:
+  `CamX::FDHwNode::PostPipelineCreate` -> `Node::NodeTriggerSystemEvent` ->
+  `ExtensionModule::SignalRecoveryCondition` -> `raise(SIGABRT)` in
+  com.qti.chi.override.so, i.e. CamX's face-detection HW node reports a
+  fatal system event right after the pipeline is created. Lahaina has no
+  FD block in DT (fd600 is kona) and neither 5.4 nor 5.10 builds
+  `CONFIG_SPECTRA_FD`, so this node presumably runs on another engine
+  (CDSP/ICP); the provider does open a CDSP FastRPC session just before.
+  Next step needs CamX's own logs, which need root (KernelSU) to set the
+  vendor log properties / override file.
   Diag #88+ adds `camera.debug_mdl=0x11a`
   (CORE|ISP|CRM|ICP) to the cmdline so the failing step shows up as
   `CAM_DBG:` lines.
@@ -690,7 +701,7 @@ instead:
 | diag #90 (more) | Zorix A16 | Text still missing (pre-#92). After ~9 min CPUs 1-7 stayed offline (memlat hotplug -EACCES); wake took ~7 s (fbcon console); USB gadget lost after host use; USB DAC fails enumeration (-71); camera black (CamX never acquires ISP HW) | |
 | #96 | Zorix A16 | Lag/stutter fixed (CPUs stay online), slow wake / multi-press fixed, VoIP audio in video calls works. Still open: missing text and blinking images (GPU texture data), USB-C earphones/DAC not detected (audio stays on speaker), camera (also video calls) | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
 | #96 logs | Zorix A16 | CPUs online all boot (85/85 snapshots). USB: one host session then UCSI GET_PDOS timeout, role never changes again; DAC -71. BT: baud switch stuck | |
-| #102+ | Zorix A16 | to be tested | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
+| #102 | Zorix A16 | USB device mode + adb work (UCSI fix). Text/images still blink with GPU coherency off (so not KGSL). Camera HAL aborts in FDHwNode. One spontaneous reboot shortly after first boot (logs pending) | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
