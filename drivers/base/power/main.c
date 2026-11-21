@@ -485,6 +485,8 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, int error,
  */
 static bool haydn_pm_trace;
 core_param(haydn_pm_trace, haydn_pm_trace, bool, 0644);
+static bool haydn_pm_keep_ufs;
+core_param(haydn_pm_keep_ufs, haydn_pm_keep_ufs, bool, 0644);
 
 static void haydn_pm_mark(struct device *dev, pm_message_t state,
 			  const char *info, pm_callback_t cb,
@@ -507,6 +509,19 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 
 	if (!cb)
 		return 0;
+
+	/*
+	 * haydn: haydn_pm_keep_ufs=1 leaves the UFS host and its SCSI disks
+	 * running through system suspend/resume (every phase), so logdump
+	 * writes keep landing and the haydn-pm trace can name devices that
+	 * suspend after storage. Debug only: UFS then never sleeps.
+	 */
+	if (READ_ONCE(haydn_pm_keep_ufs) && dev->driver &&
+	    (!strcmp(dev->driver->name, "sd") ||
+	     !strncmp(dev->driver->name, "ufshcd", 6))) {
+		haydn_pm_mark(dev, state, info, cb, "skip", 0);
+		return 0;
+	}
 
 	calltime = initcall_debug_start(dev, cb);
 
