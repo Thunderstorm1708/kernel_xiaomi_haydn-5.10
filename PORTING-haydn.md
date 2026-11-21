@@ -404,6 +404,10 @@ Notes:
   are not zero. The vendor UMD is built for 5.4 KGSL. Diag #138+ copies these
   three lists the 5.4 way (`kgsl_list_copy()`) and logs any remaining
   `gpu_command -EFAULT at <stage>` with the sizes, rate limited.
+* **Fixed in #138** (user confirmed: no missing text, no blinking). #138
+  has both the 5.4-style list copy and the non-coherent `kgsl_smmu` walks;
+  both are on the main branch since then. Which one did it is not yet
+  split out (test a build without the `kgsl_smmu` change).
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -936,7 +940,7 @@ instead:
 | #134+ | Zorix A16 | to be tested | diag: `dma-coherent` removed from `kgsl_smmu` (non-coherent GPU table walks) |
 | #132 (Wi-Fi on, screen off) | Zorix A16 | Hung black after ~5 min and did not reset (needed a long power press); pm trace ends 4 ms after WLAN suspend | |
 | #136+ | Zorix A16 | to be tested | diag: `reboot=warm` removed again |
-| #138+ | Zorix A16 | to be tested | diag: KGSL cmd/obj/sync lists copied the 5.4 way; `gpu_command -EFAULT at` logging |
+| #138 | Zorix A16 | **Missing text and blinking fixed** | KGSL cmd/obj/sync lists copied the 5.4 way; non-coherent `kgsl_smmu` walks (both moved to main) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
