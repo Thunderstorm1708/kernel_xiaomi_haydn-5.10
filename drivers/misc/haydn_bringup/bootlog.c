@@ -25,6 +25,7 @@
 #include <linux/haydn_bootlog.h>
 #include <linux/cpufreq.h>
 #include <linux/cpumask.h>
+#include <linux/vmalloc.h>
 
 #define LOG_PAGES	4096	/* 16 MiB */
 #define SCAN_MINORS	1024
@@ -314,6 +315,56 @@ void haydn_bootlog_before_init(void)
 	pr_info("bootlog: probe trace on\n");
 }
 
+/*
+ * Copy the tail of the previous boot's pstore records (ramoops: panic dmesg
+ * and console) into this boot's log. Resets during suspend never reach the
+ * log partition (storage is already suspended), but a panic - e.g. from the
+ * DPM watchdog - is kept in ramoops across the warm reset. OrangeFox cannot
+ * read it and Android needs root, so do it here. Called with the lock held.
+ */
+static void dump_pstore_file(const char *path, size_t tail)
+{
+	struct file *f;
+	loff_t size, pos;
+	char *buf;
+	ssize_t n;
+	char hdr[160];
+	int hl;
+
+	f = filp_open(path, O_RDONLY, 0);
+	if (IS_ERR(f))
+		return;
+	size = i_size_read(file_inode(f));
+	if (size <= 0)
+		size = 2 << 20;
+	buf = vmalloc(tail);
+	if (!buf)
+		goto out;
+	pos = size > tail ? size - tail : 0;
+	n = kernel_read(f, buf, tail, &pos);
+	hl = scnprintf(hdr, sizeof(hdr),
+		       "==== bootlog: previous boot %s (last %zd bytes) ====\n",
+		       path, n > 0 ? n : 0);
+	append(hdr, hl);
+	if (n > 0)
+		append(buf, n);
+	{
+		static const char end[] = "==== bootlog: end of pstore record ====\n";
+
+		append(end, strlen(end));
+	}
+	vfree(buf);
+out:
+	filp_close(f, NULL);
+}
+
+static void dump_pstore(void)
+{
+	dump_pstore_file("/sys/fs/pstore/dmesg-ramoops-0", 96 << 10);
+	dump_pstore_file("/sys/fs/pstore/console-ramoops-0", 48 << 10);
+	dump_pstore_file("/sys/fs/pstore/console-ramoops", 48 << 10);
+}
+
 static int bootlog_thread(void *unused)
 {
 	static char line[1024];
@@ -336,6 +387,11 @@ static int bootlog_thread(void *unused)
 				show_tasks();
 			if (tick == 3 || tick == 12 || tick == 30 || tick == 60)
 				driver_deferred_probe_dump();
+			if (tick == 20) {
+				mutex_lock(&bootlog_lock);
+				dump_pstore();
+				mutex_unlock(&bootlog_lock);
+			}
 			tick++;
 		}
 		mutex_lock(&bootlog_lock);

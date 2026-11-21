@@ -379,6 +379,23 @@ Notes:
   active (`ramoops: using 0x800000@0xb0000000`): after an unexpected
   reset, boot straight to OrangeFox and copy `/sys/fs/pstore/*`.
 
+* #114: the freeze at screen timeout ended exactly like the #102 resets:
+  the log stops right after `cs35l41 ... cs35l41_main_amp_event: event = 8`
+  inside a suspend (UFS is already suspended, so bootlog cannot write).
+  OrangeFox does not expose the ramoops records (`/sys/fs/pstore` empty).
+  Diag #118+: `CONFIG_DPM_WATCHDOG` (timeout 5 s, needs EXPERT and
+  PM_DEBUG) panics if a device suspend/resume callback hangs, ramoops keeps
+  the panic dmesg, and bootlog copies the tail of
+  `/sys/fs/pstore/{dmesg-ramoops-0,console-ramoops-0}` into the next boot's
+  log at tick 20 (`==== bootlog: previous boot ... ====`).
+* UBWC check (#114): `sde ddr_type 8 highest_bank_bit 3` (=16) and
+  `gpu ddr_type 8 highest_bank_bit 16`, so they match; not the cause.
+* BT at exactly 3.2 Mbaud (#114, no freq_diff, no set_rate error): still
+  `SetBaudRateStuck`. The controller answers the set-baud command ~7 ms
+  later at the new rate (one garbage byte at 115200), the host switches
+  ~23 ms after the command, and afterwards nothing is received and the HAL
+  sends nothing. The clock rate was not the (only) problem.
+
 ### GPU cache maintenance (missing UI text)
 
 * `kgsl_cache_range_op()` (`drivers/gpu/msm/kgsl_sharedmem.c`) did
@@ -776,6 +793,7 @@ instead:
 | #112+ | Zorix A16 | to be tested | BT UART clock up to 120 MHz at VDD_LOW (exact 3.2 Mbaud) |
 | #114 | Zorix A16 | Text still missing (fine after boot, worse over time). Froze at screen timeout, then reset | diag: GPU IFPC and preemption off |
 | #116+ | Zorix A16 | to be tested | IFPC/preemption back on |
+| #118+ | Zorix A16 | to be tested | diag: DPM watchdog 5 s + pstore readback into bootlog |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
