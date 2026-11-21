@@ -371,6 +371,20 @@ Notes:
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
+### Root: KernelSU-Next (diag only)
+
+* KernelSU-Next v3.4.2 (tag commit 4c706b59, 3355 commits) is vendored as
+  plain files in `drivers/kernelsu` (from its `kernel/` directory; the
+  upstream `setup.sh` would clone it and add a symlink instead). Its Kbuild
+  takes the version from git; in a vendored copy that fails, so the
+  fallback is pinned to `KSU_VERSION 33355` (30000 + commit count) and tag
+  `v3.4.2` so the manager accepts it. `drivers/Makefile` has
+  `obj-$(CONFIG_KSU) += kernelsu/`, `drivers/Kconfig` sources its Kconfig.
+  Needs KPROBES and EXT4_FS (both in GKI). Only `haydn_diag.config` sets
+  `CONFIG_KSU=y` (#120+). SUSFS is not integrated (the `susfs/` file in
+  the copy is not built). Manager: KernelSU-Next v3.4.2 release APK.
+  Credit: KernelSU (tiann) and KernelSU-Next (rifsxd and contributors).
+
 ### Spontaneous resets during suspend (#102)
 
 * One reset right after the first boot and one during a full suspend
@@ -794,6 +808,7 @@ instead:
 | #114 | Zorix A16 | Text still missing (fine after boot, worse over time). Froze at screen timeout, then reset | diag: GPU IFPC and preemption off |
 | #116+ | Zorix A16 | to be tested | IFPC/preemption back on |
 | #118+ | Zorix A16 | to be tested | diag: DPM watchdog 5 s + pstore readback into bootlog |
+| #120+ | Zorix A16 | to be tested | diag: KernelSU-Next v3.4.2 built in |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
