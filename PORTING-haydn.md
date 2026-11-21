@@ -335,6 +335,21 @@ Notes:
   it is now the boot parameter `ion_force_dma_sync=1` (`core_param`), set in
   diag #104+. If that fixes it, the per-attachment path needs fixing.
 
+* #106 (ion_force_dma_sync=1): still blinking, and a video shows a
+  diagonal black wedge across a GPU-rendered page (a quad half drawn), so
+  this looks like a format/compression mismatch or early read, not CPU
+  cache maintenance. Candidate: UBWC highest bank bit. KGSL uses 16 for
+  a660 (15 on LPDDR4), SDE picks from `qcom,sde-highest-bank-bit =
+  <0x8 0x3>, <0x7 0x2>` by `of_fdt_get_ddrtype()` and falls back to 2 (15)
+  if the DDR type is unknown. `of_fdt_get_ddrtype()` on 5.10 reads
+  `ddr_device_type` from `/memory` in the live tree. #108+ logs
+  `haydn-ubwc: sde/gpu ddr_type .. highest_bank_bit ..` to compare.
+  Quick discriminator: a screenshot (GPU composition) of a screen with
+  missing text; if the screenshot is complete, the display side decodes
+  the buffers wrongly.
+* `Skipped access check` (KGSL import of an ION buffer without mem_buf
+  vmperm, ~1100/boot) is now dev_dbg.
+
 ### Spontaneous resets during suspend (#102)
 
 * One reset right after the first boot and one during a full suspend
@@ -735,6 +750,8 @@ instead:
 | #102 | Zorix A16 | USB device mode + adb work (UCSI fix). Text/images still blink with GPU coherency off (so not KGSL). Camera HAL aborts in FDHwNode. One spontaneous reboot shortly after first boot (logs pending) | UCSI without GET_PDOS; no VT switch on suspend; diag: UART debug to dmesg |
 | #102 more | Zorix A16 | USB-C earphones work. BT: 3.2 Mbaud set as 3.125. Two unexplained resets. Camera: CamX FDHwNode abort | |
 | #104+ | Zorix A16 | to be tested | BT UART clock table with 102.4 MHz; diag: ion_force_dma_sync=1, UART debug only on BT UART |
+| #106 | Zorix A16 | BT still turns off; text/images still blink (diagonal black wedge seen) | |
+| #108+ | Zorix A16 | to be tested | UBWC bank-bit logging; KGSL access-check spam silenced |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
