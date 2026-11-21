@@ -2884,10 +2884,13 @@ int a6xx_gmu_probe(struct kgsl_device *device,
 		goto error;
 
 	/* Set up GMU idle state */
-	if (ADRENO_FEATURE(adreno_dev, ADRENO_IFPC))
+	if (ADRENO_FEATURE(adreno_dev, ADRENO_IFPC) && adreno_gpu_ifpc)
 		gmu->idle_level = GPU_HW_IFPC;
 	else
 		gmu->idle_level = GPU_HW_ACTIVE;
+	dev_info(&gmu->pdev->dev, "haydn-gpu: ifpc %s, preemption %s\n",
+		 gmu->idle_level == GPU_HW_IFPC ? "on" : "off",
+		 adreno_gpu_preempt ? "allowed" : "off");
 
 	a6xx_gmu_acd_probe(device, gmu, pdev->dev.of_node);
 

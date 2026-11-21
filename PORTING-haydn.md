@@ -356,6 +356,14 @@ Notes:
   Quick discriminator: a screenshot (GPU composition) of a screen with
   missing text; if the screenshot is complete, the display side decodes
   the buffers wrongly.
+* Result: screenshots on haydn show the same missing letters and black
+  banners, so the rendered frames are incomplete (GPU side, not SDE/UBWC).
+  Whole characters vanish consistently (e.g. every 'o'/'t' on a page),
+  i.e. glyphs added to HWUI's glyph atlas texture later never land; images
+  (uploads) blank the same way. Diag #114+ adds `msm_kgsl.gpu_ifpc` and
+  `msm_kgsl.gpu_preempt` (default off in diag, on otherwise) to test GPU
+  inter-frame power collapse and ringbuffer preemption; the boot log shows
+  `haydn-gpu: ifpc .., preemption ..`.
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -760,7 +768,9 @@ instead:
 | #102 more | Zorix A16 | USB-C earphones work. BT: 3.2 Mbaud set as 3.125. Two unexplained resets. Camera: CamX FDHwNode abort | |
 | #104+ | Zorix A16 | to be tested | BT UART clock table with 102.4 MHz; diag: ion_force_dma_sync=1, UART debug only on BT UART |
 | #106 | Zorix A16 | BT still turns off; text/images still blink (diagonal black wedge seen); YouTube green frames (from ion_force_dma_sync) | |
-| #108+ | Zorix A16 | to be tested | UBWC bank-bit logging; KGSL access-check spam silenced |
+| #108+ | Zorix A16 | UBWC bank-bit logging; KGSL access-check spam silenced | |
+| #112+ | Zorix A16 | to be tested | BT UART clock up to 120 MHz at VDD_LOW (exact 3.2 Mbaud) |
+| #114+ | Zorix A16 | to be tested | diag: GPU IFPC and preemption off |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
