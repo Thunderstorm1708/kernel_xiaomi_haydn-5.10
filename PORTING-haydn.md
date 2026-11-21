@@ -607,7 +607,7 @@ instead:
 | diag #82 | Zorix A16 | Power key events clean (no bounce). Froze ~1 min after unplugging USB from another phone: NULL deref after `DWC3 exited from low power mode` (host-role start without xhci). Aborted suspends still take ~5 s to reach `PM: suspend exit` | |
 | diag #84 | Zorix A16 | USB file transfer to the other device works. Froze on a USB reconnect: host mode started, xhci DMA bypassed the SMMU → `arm-smmu` context fault → BUG → panic. Power key presses each one clean event; double tick also with double-tap-to-sleep (Android feedback). Calls: still no audio either way, no in-call proximity | dwc3 usb-role-switch + host guard; bw_hwmon; diag PM notifier timing and cpufreq dump |
 | #86+ | Zorix A16 | to be tested | xhci-plat uses the SMMU-backed `ssusb` parent for DMA |
-| #88+ | Zorix A16 | to be tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
+| diag #90 | Zorix A16 | Call audio works both ways; in-call proximity turns the screen off; fingerprint works. Rest still being tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
