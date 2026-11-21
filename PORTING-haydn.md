@@ -792,6 +792,13 @@ instead:
      screen only). With `loglevel=7` fbcon drew every info line, which slowed
      the boot animation and turned any WARN into a multi-second stall. bootlog
      reads the log buffer through `kmsg_dump`, so logdump still gets every line.
+   * Slot choice: the log goes to the logdump partition with the lower
+     sequence number. sde59 (UFS LUN 4) can appear after sda24; a boot
+     that chose with only sda24 in sight wrote over the newest log (the
+     crash being chased) and both slots ended up with the same number, so
+     the next boot overwrote the other crash too. Since #130 bootlog waits
+     until both are present (up to 30 s after boot, rescans twice a
+     second; lines are kept in RAM meanwhile).
    * The bootlog buffer is 16 MiB. Since build #60 it never stops: once full,
      the first quarter (the boot) is kept and the rest wraps as a ring
      (`bootlog: ===== ring wrapped =====`). In a dump, the newest lines are
@@ -869,6 +876,8 @@ instead:
 | #126+ | Zorix A16 | to be tested | diag: `msm_kgsl.tlb_flush_slumber=1` (GPU TLB flush on unmap even in slumber) |
 | #125 (pm_async=0) | Zorix A16 | Still resets ~2-3 min after screen off with Wi-Fi on; markers show WoW completes | |
 | #128+ | Zorix A16 | to be tested | diag: `haydn_pm_trace=1` per-device suspend markers with logdump writes |
+| #125 (Wi-Fi off, mobile data on) | Zorix A16 | Also reset with screen off on mobile data only; that crash log was lost (bootlog slot bug below) | |
+| #130+ | Zorix A16 | to be tested | bootlog waits for both logdump partitions before choosing |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
