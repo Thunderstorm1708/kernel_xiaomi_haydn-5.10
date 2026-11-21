@@ -128,7 +128,13 @@ static struct block_device *find_logdump(void)
 	long best_seq = LONG_MAX, max_seq = 0;
 	loff_t best_size = 0;
 	struct block_device *bdev;
-	int i, m, seen = 0;
+	int i, m, seen = 0, logs = 0;
+	static unsigned long next_try;
+
+	/* rescanning every minor is costly; retry at most twice a second */
+	if (next_try && time_before(jiffies, next_try))
+		return NULL;
+	next_try = jiffies + HZ / 2;
 
 	for (i = 0; i < ARRAY_SIZE(majors); i++) {
 		for (m = 0; m < SCAN_MINORS; m++) {
@@ -151,6 +157,7 @@ static struct block_device *find_logdump(void)
 			if (is_logdump(bdev) && sz >= 262144) {
 				long seq = log_seq(bdev);
 
+				logs++;
 				pr_info("bootlog: %pg (size=%lld) holds log %ld\n",
 					bdev, (long long)sz, seq);
 				if (seq > max_seq)
@@ -170,6 +177,17 @@ static struct block_device *find_logdump(void)
 			pr_warn("bootlog: no logdump found among %d named partitions\n", seen);
 	}
 	if (!best) {
+		return NULL;
+	}
+	/*
+	 * haydn has two logdump partitions (sda24, sde59) on different UFS
+	 * LUNs, and sde can show up later than sda. Choosing with only one in
+	 * sight wrote over the newest log (the crash we wanted) and gave both
+	 * the same number. Wait for both, up to 30 s after boot.
+	 */
+	if (logs < 2 && jiffies_to_msecs(jiffies - INITIAL_JIFFIES) < 30000) {
+		pr_info_ratelimited("bootlog: %d logdump partition(s) so far, waiting for the second\n",
+				    logs);
 		return NULL;
 	}
 	max_pages = min_t(size_t, LOG_PAGES, (size_t)(best_size >> PAGE_SHIFT));
