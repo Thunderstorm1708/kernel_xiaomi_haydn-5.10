@@ -8,6 +8,7 @@
 #include <linux/compat.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/moduleparam.h>
 #include <linux/of_platform.h>
 #include <linux/scatterlist.h>
 #include <linux/qcom-iommu-util.h>
@@ -53,6 +54,10 @@ struct kgsl_iommu_addr_entry {
 };
 
 static struct kmem_cache *addr_entry_cache;
+
+static bool kgsl_tlb_flush_slumber;
+module_param_named(tlb_flush_slumber, kgsl_tlb_flush_slumber, bool, 0644);
+MODULE_PARM_DESC(tlb_flush_slumber, "Flush the GPU TLB on unmap even in slumber");
 
 /* These are dummy TLB ops for the io-pgtable instances */
 
@@ -326,7 +331,14 @@ static int _iopgtbl_unmap(struct kgsl_iommu_pt *pt, u64 gpuaddr, size_t size)
 	}
 
 flush:
-	/* Skip TLB Operations if GPU is in slumber */
+	/*
+	 * Skip TLB Operations if GPU is in slumber: stock assumes the GPU SMMU
+	 * lost its TLB with the GPU power. haydn (diag): tlb_flush_slumber=1
+	 * flushes anyway, to test whether stale TLB entries make the GPU read
+	 * freed and reused pages (glyphs vanish more the longer it runs).
+	 */
+	if (READ_ONCE(kgsl_tlb_flush_slumber))
+		goto do_flush;
 	if (mutex_trylock(&device->mutex)) {
 		if (device->state == KGSL_STATE_SLUMBER) {
 			mutex_unlock(&device->mutex);
@@ -335,6 +347,7 @@ flush:
 		mutex_unlock(&device->mutex);
 	}
 
+do_flush:
 	kgsl_iommu_flush_tlb(pt->base.mmu);
 	return 0;
 }
