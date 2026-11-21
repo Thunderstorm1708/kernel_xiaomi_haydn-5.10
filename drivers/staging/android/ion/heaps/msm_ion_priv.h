@@ -191,6 +191,7 @@ struct device *msm_ion_heap_device(struct ion_heap *heap);
 
 struct ion_heap *get_ion_heap(int heap_id);
 
+extern bool ion_force_dma_sync;
 void ion_prepare_sgl_for_force_dma_sync(struct sg_table *table);
 
 /**

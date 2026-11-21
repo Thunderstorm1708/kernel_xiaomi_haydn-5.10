@@ -1309,7 +1309,14 @@ static struct clk_rcg2 gcc_qupv3_wrap2_s4_clk_src = {
 	.mnd_width = 16,
 	.hid_width = 5,
 	.parent_map = gcc_parent_map_0,
-	.freq_tbl = ftbl_gcc_qupv3_wrap0_s0_clk_src,
+	/*
+	 * haydn: SE18 (wrap2 s4) is the Bluetooth HS-UART. The QCA6490 HAL
+	 * runs it at 3.2 Mbaud, i.e. 51.2 MHz with 16x sampling, which needs
+	 * the 102.4 MHz level; the wrap0_s0 table stops at 100 MHz, so the
+	 * UART ran at 3.125 Mbaud (-2.3%) and the chip never answered after
+	 * the baud switch. Use the wrap1_s0 table, which has 102.4 MHz.
+	 */
+	.freq_tbl = ftbl_gcc_qupv3_wrap1_s0_clk_src,
 	.enable_safe_config = true,
 	.flags = HW_CLK_CTRL_MODE,
 	.clkr.hw.init = &gcc_qupv3_wrap2_s4_clk_src_init,
