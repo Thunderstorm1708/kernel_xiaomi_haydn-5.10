@@ -393,6 +393,17 @@ Notes:
   `dma-coherent` from `kgsl_smmu` (their stage 2Z-6). Diag #134+ does the
   same through `/delete-property/` in `haydn-sm8350.dtsi`; the boot log
   should then say "non-coherent table walk" for 3da0000.kgsl-smmu.
+* **Dropped GPU submissions.** The #132 log (seq 38) has 3032
+  `Adreno-GSL: ioctl ... (IOCTL_KGSL_GPU_COMMAND) failed: errno 14 Bad
+  address` lines from many apps in one boot; every one is a draw batch that
+  never reaches the GPU, which fits glyphs and parts of the UI missing or
+  blinking. msm-5.4 KGSL copied the cmdlist, objlist and synclist elements
+  with `kgsl_copy_from_user()` (min of kernel and user size, extra user bytes
+  ignored); msm-5.10 uses `copy_struct_from_user()`, which fails (-E2BIG,
+  turned into -EFAULT) when the user element is larger and its extra bytes
+  are not zero. The vendor UMD is built for 5.4 KGSL. Diag #138+ copies these
+  three lists the 5.4 way (`kgsl_list_copy()`) and logs any remaining
+  `gpu_command -EFAULT at <stage>` with the sizes, rate limited.
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -925,6 +936,7 @@ instead:
 | #134+ | Zorix A16 | to be tested | diag: `dma-coherent` removed from `kgsl_smmu` (non-coherent GPU table walks) |
 | #132 (Wi-Fi on, screen off) | Zorix A16 | Hung black after ~5 min and did not reset (needed a long power press); pm trace ends 4 ms after WLAN suspend | |
 | #136+ | Zorix A16 | to be tested | diag: `reboot=warm` removed again |
+| #138+ | Zorix A16 | to be tested | diag: KGSL cmd/obj/sync lists copied the 5.4 way; `gpu_command -EFAULT at` logging |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
