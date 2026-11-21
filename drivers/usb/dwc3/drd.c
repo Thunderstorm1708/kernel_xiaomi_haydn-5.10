@@ -506,6 +506,8 @@ static int dwc3_usb_role_switch_set(struct usb_role_switch *sw,
 		break;
 	}
 
+	dev_info(dwc->dev, "haydn-usb: core role %d -> prtcap %u (cur %u)\n",
+		 role, mode, dwc->current_dr_role);
 	dwc3_set_mode(dwc, mode);
 	return 0;
 }

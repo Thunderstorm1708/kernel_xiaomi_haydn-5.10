@@ -4507,6 +4507,9 @@ static int dwc3_msm_set_role(struct dwc3_msm *mdwc, enum usb_role role)
 
 	dbg_log_string("cur_role:%s new_role:%s refcnt:%d\n", usb_role_string(cur_role),
 				usb_role_string(role), mdwc->refcnt_dp_usb);
+	dev_info(mdwc->dev, "haydn-usb: set_role %s -> %s (drd_state %d)\n",
+		 usb_role_string(cur_role), usb_role_string(role),
+		 mdwc->drd_state);
 
 	/*
 	 * For boot up without USB cable connected case, don't check

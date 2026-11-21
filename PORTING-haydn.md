@@ -287,6 +287,13 @@ Notes:
   <&pil_gpu_mem>; }; }` added. Without it the GPU never starts and SurfaceFlinger
   aborts in a loop.
 
+### Slow screen wake (diag only)
+
+* Diag builds had `console=tty0 fbcon=...` for a panic screen. Every resume
+  then spent ~6.2 s in `pm_restore_console` (VT switch + fbcon redraw),
+  measured by the diag PM timing. Removed from the diag cmdline (#94+);
+  panics are still caught by bootlog. The normal build never had it.
+
 ### GPU cache maintenance (missing UI text)
 
 * `kgsl_cache_range_op()` (`drivers/gpu/msm/kgsl_sharedmem.c`) did
@@ -486,6 +493,12 @@ Notes:
   `linux,sysdev_is_parent` like dwc3 core does for gadget mode; the PHY and
   TPL lookups still use the child node (#86+). Any msm dwc3 port to 5.10
   with xhci-plat needs this.
+* #90: host mode works (a Nothing Phone 2 enumerated, no SMMU fault). Open:
+  after the host session ended the gadget never came back (`udc-core:
+  couldn't find an available UDC` every second from the USB gadget HAL, no
+  MTP/adb); a USB DAC failed full-speed enumeration (`device descriptor
+  read/64, error -71`) and the controller kept cycling low power. #94+
+  logs every role change (`haydn-usb: set_role`, `haydn-usb: core role`).
 
 ### Power key (qpnp-power-on)
 
@@ -518,6 +531,17 @@ Notes:
 * UI slow (3 s app starts, 1-7 s binder calls) while the kernel's own 2 s
   bootlog ticks stay on time. Compare with the normal build to separate diag
   overhead.
+* **CPUs 1-7 stuck offline after the first full suspend (#90).** haydn
+  uses `deep` suspend (PSCI SYSTEM_SUSPEND), which hot-unplugs CPUs 1-7.
+  On resume `arm-memlat-mon`'s CPUHP_AP_ONLINE_DYN callback failed to
+  recreate its PMU counters (`event 8 not set for cpu N ret -13`) and
+  returned the error, so the hotplug core killed each CPU again (`Error
+  taking CPU1 up: -13`). From then on only CPU0 ran: heavy lag/stutter,
+  2-30 s binder calls (content providers, sensors, audio policy). The
+  memlat hotplug callbacks now always return 0 (#94+).
+* `walt_suspend()` used `ktime_get()` after `timekeeping_suspend()` (walt's
+  syscore ops run after timekeeping's), a WARN on every suspend; it now
+  reads `ktime_get_mono_fast_ns()`.
 * cpufreq governor: all three policies run `schedutil` (GKI default).
   WALT is built in (`CONFIG_SCHED_WALT=y`) and registers its own `walt`
   cpufreq governor (`kernel/sched/walt/cpufreq_walt.c`), which msm-5.10
@@ -534,7 +558,13 @@ Notes:
   never starts; no kernel error. The app opens (privacy dot on) with a black
   preview. In #84 the HAL loops every ~1.2 s: sensor ACQUIRE (0x1ad2 @0x20,
   0x355 @0x34), ICP `cam_hfi_resume`, then RELEASE, with no ISP acquire or
-  CAM_START_DEV in between. Diag #88+ adds `camera.debug_mdl=0x11a`
+  CAM_START_DEV in between. With `debug_mdl` (#90): ICP (IPE/BPS)
+  acquire, config_io and abort all succeed, the ISP context is acquired
+  with the v2 flow (`num_resources` = 0xFEFEFEFE), then CamX releases
+  everything about 1 s later without ever sending ACQUIRE_HW, and the
+  kernel logs no error. The failing step is in CamX userspace; it needs
+  CamX logs (`/vendor/etc/camera/camxoverridesettings.txt` log masks).
+  Diag #88+ adds `camera.debug_mdl=0x11a`
   (CORE|ISP|CRM|ICP) to the cmdline so the failing step shows up as
   `CAM_DBG:` lines.
 
@@ -623,6 +653,8 @@ instead:
 | #86+ | Zorix A16 | to be tested | xhci-plat uses the SMMU-backed `ssusb` parent for DMA |
 | diag #90 | Zorix A16 | Call audio works both ways; in-call proximity turns the screen off; fingerprint works. Rest still being tested | hostless PCM start (call audio); us_prox enable logs; diag: camera debug_mdl |
 | #92+ | Zorix A16 | to be tested | KGSL cache range op covers the right pages (missing text) |
+| diag #90 (more) | Zorix A16 | Text still missing (pre-#92). After ~9 min CPUs 1-7 stayed offline (memlat hotplug -EACCES); wake took ~7 s (fbcon console); USB gadget lost after host use; USB DAC fails enumeration (-71); camera black (CamX never acquires ISP HW) | |
+| #94+ | Zorix A16 | to be tested | memlat hotplug never fails; walt_suspend clock; diag: no fbcon console; USB role logging |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):

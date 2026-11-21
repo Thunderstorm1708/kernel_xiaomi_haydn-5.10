@@ -487,7 +487,7 @@ static int memlat_event_hotplug_coming_up(unsigned int cpu)
 	struct memlat_cpu_grp *cpu_grp = per_cpu(per_cpu_grp, cpu);
 
 	if (!cpu_grp)
-		return -ENODEV;
+		return 0;
 	mutex_lock(&cpu_grp->mons_lock);
 	if (cpu_grp->num_active_mons) {
 		ret = memlat_hp_restart_events(cpu, true);
@@ -495,7 +495,18 @@ static int memlat_event_hotplug_coming_up(unsigned int cpu)
 	}
 	mutex_unlock(&cpu_grp->mons_lock);
 
-	return ret;
+	/*
+	 * haydn: never fail CPU bring-up over a missing PMU counter. Creating
+	 * the counters can fail with -EACCES while the CPU comes back from
+	 * system suspend; returning that aborted the hotplug, so CPUs 1-7
+	 * stayed offline after the first deep suspend (whole system on CPU0:
+	 * lag and stutter, slow wake). memlat only loses samples for that
+	 * CPU until the next hotplug.
+	 */
+	if (ret)
+		pr_warn_ratelimited("memlat: cpu%u online without events (%d)\n",
+				    cpu, ret);
+	return 0;
 }
 
 static int memlat_event_hotplug_going_down(unsigned int cpu)
@@ -504,7 +515,7 @@ static int memlat_event_hotplug_going_down(unsigned int cpu)
 	unsigned int ret = 0;
 
 	if (!cpu_grp)
-		return -ENODEV;
+		return 0;
 	/* avoid race between cpu hotplug and update_counts */
 	mutex_lock(&cpu_grp->mons_lock);
 	if (cpu_grp->num_active_mons) {
