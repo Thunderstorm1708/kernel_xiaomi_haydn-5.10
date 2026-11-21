@@ -12,6 +12,8 @@
  */
 #include <linux/bio.h>
 #include <linux/completion.h>
+#include <linux/suspend.h>
+#include <linux/moduleparam.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
@@ -35,6 +37,17 @@ static struct page *pages[LOG_PAGES];
 static size_t used, done, max_pages = LOG_PAGES;
 static struct block_device *log_bdev;
 static bool bootlog_flushed;
+
+/*
+ * haydn: every suspend hang so far happened only once UFS itself was
+ * suspended (pm_test "devices" hangs, the same test with UFS kept up does
+ * not), and this writer keeps submitting logdump I/O through suspend.
+ * pause_suspend=1 (default) flushes once at PM_SUSPEND_PREPARE and then
+ * writes nothing until PM_POST_SUSPEND; lines stay in RAM meanwhile.
+ */
+static bool pause_suspend = true;
+module_param(pause_suspend, bool, 0644);
+static bool bootlog_paused;
 static DEFINE_MUTEX(bootlog_lock);
 static struct kmsg_dumper sync_iter = { .active = true };
 
@@ -425,7 +438,7 @@ static int bootlog_thread(void *unused)
 				memcpy(page_address(pages[0]) + HEADER_LEN, seq, SEQ_DIGITS);
 			}
 		}
-		if (log_bdev && used > done) {
+		if (log_bdev && used > done && !READ_ONCE(bootlog_paused)) {
 			flush();
 			WRITE_ONCE(bootlog_flushed, true);
 		}
@@ -448,7 +461,7 @@ void haydn_bootlog_flush_now(void)
 	static char line[1024];
 	size_t len;
 
-	if (!READ_ONCE(bootlog_flushed))
+	if (!READ_ONCE(bootlog_flushed) || READ_ONCE(bootlog_paused))
 		return;
 
 	/*
@@ -493,7 +506,8 @@ static void bootlog_sync(int lock_tries, long timeout)
 	struct bio *bio;
 	int tries;
 
-	if (!READ_ONCE(bootlog_flushed) || in_atomic() || irqs_disabled())
+	if (!READ_ONCE(bootlog_flushed) || READ_ONCE(bootlog_paused) ||
+	    in_atomic() || irqs_disabled())
 		return;
 	for (tries = 0; !mutex_trylock(&bootlog_lock); tries++) {
 		if (tries >= lock_tries)
@@ -599,8 +613,42 @@ static struct notifier_block bootlog_nb = {
 	.priority = INT_MIN,
 };
 
+static int bootlog_pm_cb(struct notifier_block *nb, unsigned long action,
+			 void *data)
+{
+	static char line[1024];
+	size_t len;
+
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		if (!READ_ONCE(pause_suspend))
+			break;
+		pr_info("bootlog: pausing logdump writes for suspend\n");
+		mutex_lock(&bootlog_lock);
+		while (kmsg_dump_get_line(&sync_iter, false, line, sizeof(line), &len))
+			append(line, len);
+		if (log_bdev && used > done)
+			flush();
+		WRITE_ONCE(bootlog_paused, true);
+		mutex_unlock(&bootlog_lock);
+		break;
+	case PM_POST_SUSPEND:
+		if (READ_ONCE(bootlog_paused)) {
+			WRITE_ONCE(bootlog_paused, false);
+			pr_info("bootlog: logdump writes resumed\n");
+		}
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block bootlog_pm_nb = {
+	.notifier_call = bootlog_pm_cb,
+};
+
 static int __init bootlog_init(void)
 {
+	register_pm_notifier(&bootlog_pm_nb);
 	register_reboot_notifier(&bootlog_nb);
 	task = kthread_run(bootlog_thread, NULL, "bootlog");
 	panic_tasks[0] = kthread_create(panic_flusher_fn, NULL, "bootlog_p0");
