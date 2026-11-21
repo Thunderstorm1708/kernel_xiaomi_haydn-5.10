@@ -523,9 +523,23 @@ static int ucsi_get_pdos(struct ucsi_connector *con, int is_partner,
 	return ret;
 }
 
+/*
+ * haydn: the msm-5.4 UCSI driver never sent GET_PDOS, and the 5.4-era ADSP
+ * charger firmware never answers it: ucsi_glink waits for sync_write_ack,
+ * times out (-110) and from then on no more connector changes reach the
+ * USB role switch (stuck in host mode after a USB-PD partner, no gadget,
+ * USB audio devices fail to enumerate). Skip it unless asked for.
+ */
+static bool get_pdos;
+module_param(get_pdos, bool, 0644);
+MODULE_PARM_DESC(get_pdos, "Query partner source PDOs (haydn ADSP fw: off)");
+
 static void ucsi_get_src_pdos(struct ucsi_connector *con, int is_partner)
 {
 	int ret;
+
+	if (!get_pdos)
+		return;
 
 	/* UCSI max payload means only getting at most 4 PDOs at a time */
 	ret = ucsi_get_pdos(con, 1, con->src_pdos, 0, UCSI_MAX_PDOS);

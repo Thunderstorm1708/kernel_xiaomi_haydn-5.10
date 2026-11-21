@@ -180,9 +180,20 @@ static void __ftrace_dbg(struct device *dev, const char *fmt, ...)
 	va_end(args);
 }
 
+/*
+ * haydn: the ROM has no debugfs ipc_logging, so the BT HAL cannot dump the
+ * UART logs. With msm_geni_serial.haydn_uart_dbg=1 (diag builds) the
+ * control/power messages (not the per-byte rx/tx dumps) also go to dmesg.
+ */
+static bool haydn_uart_dbg;
+module_param(haydn_uart_dbg, bool, 0644);
+
 #define UART_LOG_DBG(ctxt, dev, fmt...) do {		\
 	ipc_log_string(ctxt, fmt);		\
 	ftrace_dbg(dev, fmt);			\
+	if (haydn_uart_dbg && !strstr(#ctxt, "_rx") &&	\
+	    !strstr(#ctxt, "_tx"))			\
+		dev_info(dev, "haydn-uart: " fmt);	\
 } while (0)					\
 
 #define ftrace_dbg(dev, fmt, ...)			\
