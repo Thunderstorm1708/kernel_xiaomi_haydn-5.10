@@ -1097,12 +1097,13 @@ static u32 adreno_get_vk_device_id(struct kgsl_device *device)
  * random on 5.10; screenshots show the same, so the frames themselves are
  * incomplete. Test knobs for the two GPU features most likely to lose work
  * or state: inter-frame power collapse (IFPC) and ringbuffer preemption.
- * Off by default in diag builds, on otherwise (as on 5.4).
+ * On by default (as on 5.4); turning them off in #114 did not fix it
+ * and may have caused a hang at screen off.
  */
-bool adreno_gpu_ifpc = !IS_ENABLED(CONFIG_HAYDN_BOOTLOG);
+bool adreno_gpu_ifpc = true;
 module_param_named(gpu_ifpc, adreno_gpu_ifpc, bool, 0444);
 MODULE_PARM_DESC(gpu_ifpc, "Allow GPU inter-frame power collapse");
-bool adreno_gpu_preempt = !IS_ENABLED(CONFIG_HAYDN_BOOTLOG);
+bool adreno_gpu_preempt = true;
 module_param_named(gpu_preempt, adreno_gpu_preempt, bool, 0444);
 MODULE_PARM_DESC(gpu_preempt, "Allow GPU ringbuffer preemption");
 
