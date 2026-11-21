@@ -364,6 +364,10 @@ Notes:
   `msm_kgsl.gpu_preempt` (default off in diag, on otherwise) to test GPU
   inter-frame power collapse and ringbuffer preemption; the boot log shows
   `haydn-gpu: ifpc .., preemption ..`.
+* #114 (IFPC and preemption off): text still drops out; it is fine right
+  after boot and goes wrong after a while. The phone also froze at a
+  screen timeout and reset itself. Both switches default to on again in
+  #116+ (still settable with `msm_kgsl.gpu_ifpc=0` / `gpu_preempt=0`).
 * `Skipped access check` (KGSL import of an ION buffer without mem_buf
   vmperm, ~1100/boot) is now dev_dbg.
 
@@ -770,7 +774,8 @@ instead:
 | #106 | Zorix A16 | BT still turns off; text/images still blink (diagonal black wedge seen); YouTube green frames (from ion_force_dma_sync) | |
 | #108+ | Zorix A16 | UBWC bank-bit logging; KGSL access-check spam silenced | |
 | #112+ | Zorix A16 | to be tested | BT UART clock up to 120 MHz at VDD_LOW (exact 3.2 Mbaud) |
-| #114+ | Zorix A16 | to be tested | diag: GPU IFPC and preemption off |
+| #114 | Zorix A16 | Text still missing (fine after boot, worse over time). Froze at screen timeout, then reset | diag: GPU IFPC and preemption off |
+| #116+ | Zorix A16 | to be tested | IFPC/preemption back on |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
