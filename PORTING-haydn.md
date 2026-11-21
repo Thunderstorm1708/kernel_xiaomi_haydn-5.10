@@ -374,7 +374,9 @@ Notes:
 ### Root: KernelSU-Next (diag only)
 
 * KernelSU-Next v3.4.2 (tag commit 4c706b59, 3355 commits) is vendored as
-  plain files in `drivers/kernelsu` (from its `kernel/` directory; the
+  plain files in `drivers/kernelsu` (from its `kernel/` directory plus the
+  top-level `uapi/` headers, copied to `include/uapi`, which upstream links
+  with a `../../uapi` symlink that would dangle here; the
   upstream `setup.sh` would clone it and add a symlink instead). Its Kbuild
   takes the version from git; in a vendored copy that fails, so the
   fallback is pinned to `KSU_VERSION 33355` (30000 + commit count) and tag
