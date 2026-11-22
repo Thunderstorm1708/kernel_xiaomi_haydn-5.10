@@ -1068,6 +1068,7 @@ instead:
 | #158 | Zorix A16 | Still resets; no threaded handler, hang in the first hard handler on resume | threaded IRQ breadcrumb |
 | #160 | Zorix A16 | Still resets (also with breadcrumb/trace off); breadcrumb "IRQ 38" again | `haydn_late_irqs=1` |
 | #166 | Zorix A16 | **Still resets** with every suspend debug hook and bootlog off: the hang is in the port itself, not the instrumentation | diag: hooks off, `CONFIG_HAYDN_BOOTLOG=n` |
+| #166 (live tests) | Zorix A16 | Still resets with `cnss2.wlan_pcie_pm=1` (stock link PM), with all cpuidle states disabled, with the GPU forced on, and with the WLAN PCI device removed. Ruled out: WLAN link and driver, CPU LPM, GPU, SPSS (#156), network wake sources, instrumentation (#166). Only `haydn_pm_keep_ufs=1` + `pm_test=devices` ever passed (3/3, #142); next: compare ufshcd/ufs-qcom and the ICE/inline-crypto key reprogramming on resume between 5.4 and 5.10 | |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
