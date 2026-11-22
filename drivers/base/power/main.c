@@ -494,11 +494,12 @@ core_param(haydn_pm_keep_ufs, haydn_pm_keep_ufs, bool, 0644);
 
 /*
  * haydn: PMIC SDAM breadcrumb. The suspend hang resets the SoC after UFS is
- * asleep, so logdump cannot show where it stopped. pmk8350 SDAM 23
- * (sdam@8600, unused on lahaina) keeps its contents across any reset short
- * of battery removal. Before and after every PM callback (suspend and
+ * asleep, so logdump cannot show where it stopped. pmk8350 SDAM 2
+ * (sdam@7100, restart reason at 0x48, writable from HLOS) keeps its
+ * contents across resets; 0x4a-0x4f read as zero and are unused. (SDAM 23,
+ * sdam@8600, holds other data at 0x46-0x4f and did not keep our writes.) Before and after every PM callback (suspend and
  * resume, all phases) and at the steps of suspend_enter(), 6 bytes go to
- * offset 0x48: magic 0xa5, step code, crc32 of the device name. The next
+ * offset 0x4a: magic 0xa5, step code, crc32 of the device name. The next
  * boot prints the last step and the matching device ("haydn-pmtrace:").
  * Only with haydn_pm_sdam=1, and never with interrupts disabled (SPMI
  * regmap may sleep).
@@ -506,14 +507,14 @@ core_param(haydn_pm_keep_ufs, haydn_pm_keep_ufs, bool, 0644);
 static bool haydn_pm_sdam;
 core_param(haydn_pm_sdam, haydn_pm_sdam, bool, 0644);
 static struct nvmem_device *haydn_sdam;
-#define HAYDN_SDAM_OFF	0x48
+#define HAYDN_SDAM_OFF	0x4a
 #define HAYDN_SDAM_MAGIC	0xa5
 
 static int haydn_sdam_match(struct device *dev, const void *data)
 {
 	return dev->of_node && of_node_name_eq(dev->of_node, "sdam") &&
 	       dev->of_node->full_name &&
-	       !strcmp(dev->of_node->full_name, "sdam@8600");
+	       !strcmp(dev->of_node->full_name, "sdam@7100");
 }
 
 static struct nvmem_device *haydn_sdam_get(void)
@@ -583,7 +584,7 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	bool found = false;
 
 	if (!nv) {
-		pr_info("haydn-pmtrace: SDAM sdam@8600 not found\n");
+		pr_info("haydn-pmtrace: SDAM sdam@7100 not found\n");
 		return;
 	}
 	if (nvmem_device_read(nv, HAYDN_SDAM_OFF, sizeof(b), b) != sizeof(b) ||
@@ -613,8 +614,8 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			found ? dev_name(dev) : "?", crc);
 		device_pm_unlock();
 	}
-	b[0] = 0;
-	nvmem_device_write(nv, HAYDN_SDAM_OFF, 1, b);
+	memset(b, 0, sizeof(b));
+	nvmem_device_write(nv, HAYDN_SDAM_OFF, sizeof(b), b);
 }
 static DECLARE_DELAYED_WORK(haydn_pmtrace_work, haydn_pmtrace_report);
 
