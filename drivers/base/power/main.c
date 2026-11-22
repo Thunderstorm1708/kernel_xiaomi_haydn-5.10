@@ -1000,12 +1000,28 @@ static void dpm_noirq_resume_devices(pm_message_t state)
  * Invoke the "noirq" resume callbacks for all devices in dpm_noirq_list and
  * allow device drivers' interrupt handlers to be called.
  */
+/*
+ * haydn: the resume hang hits in the hard handler of the first pending
+ * device IRQ (IRQ 38: spss, then sps with SPSS disabled), i.e. as soon as
+ * resume_device_irqs() lets a handler touch its hardware, before the early
+ * resume callbacks (clock controllers' pm_runtime_force_resume, IPA,
+ * i2c-geni, ...) have restored what the hardware needs. haydn_late_irqs=1
+ * re-enables device IRQs only after dpm_resume_early() instead.
+ */
+static bool haydn_late_irqs;
+core_param(haydn_late_irqs, haydn_late_irqs, bool, 0644);
+static bool haydn_irqs_deferred;
+
 void dpm_resume_noirq(pm_message_t state)
 {
 	dpm_noirq_resume_devices(state);
 
-	resume_device_irqs();
-	haydn_pm_stage(0x32);
+	if (READ_ONCE(haydn_late_irqs)) {
+		haydn_irqs_deferred = true;
+	} else {
+		resume_device_irqs();
+		haydn_pm_stage(0x32);
+	}
 	device_wakeup_disarm_wake_irqs();
 
 	cpuidle_resume();
@@ -1129,6 +1145,11 @@ void dpm_resume_early(pm_message_t state)
 	async_synchronize_full();
 	dpm_show_time(starttime, state, 0, "early");
 	trace_suspend_resume(TPS("dpm_resume_early"), state.event, false);
+	if (haydn_irqs_deferred) {
+		haydn_irqs_deferred = false;
+		resume_device_irqs();
+		haydn_pm_stage(0x32);
+	}
 }
 
 /**
