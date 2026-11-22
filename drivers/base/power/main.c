@@ -34,6 +34,10 @@
 #include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
 #include <linux/haydn_bootlog.h>
+#include <linux/nvmem-consumer.h>
+#include <linux/crc32.h>
+#include <linux/of.h>
+#include <linux/workqueue.h>
 #include <linux/devfreq.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
@@ -488,10 +492,146 @@ core_param(haydn_pm_trace, haydn_pm_trace, bool, 0644);
 static bool haydn_pm_keep_ufs;
 core_param(haydn_pm_keep_ufs, haydn_pm_keep_ufs, bool, 0644);
 
+/*
+ * haydn: PMIC SDAM breadcrumb. The suspend hang resets the SoC after UFS is
+ * asleep, so logdump cannot show where it stopped. pmk8350 SDAM 23
+ * (sdam@8600, unused on lahaina) keeps its contents across any reset short
+ * of battery removal. Before and after every PM callback (suspend and
+ * resume, all phases) and at the steps of suspend_enter(), 6 bytes go to
+ * offset 0x48: magic 0xa5, step code, crc32 of the device name. The next
+ * boot prints the last step and the matching device ("haydn-pmtrace:").
+ * Only with haydn_pm_sdam=1, and never with interrupts disabled (SPMI
+ * regmap may sleep).
+ */
+static bool haydn_pm_sdam;
+core_param(haydn_pm_sdam, haydn_pm_sdam, bool, 0644);
+static struct nvmem_device *haydn_sdam;
+#define HAYDN_SDAM_OFF	0x48
+#define HAYDN_SDAM_MAGIC	0xa5
+
+static int haydn_sdam_match(struct device *dev, const void *data)
+{
+	return dev->of_node && of_node_name_eq(dev->of_node, "sdam") &&
+	       dev->of_node->full_name &&
+	       !strcmp(dev->of_node->full_name, "sdam@8600");
+}
+
+static struct nvmem_device *haydn_sdam_get(void)
+{
+	struct nvmem_device *nv;
+
+	if (haydn_sdam)
+		return haydn_sdam;
+	nv = nvmem_device_find(NULL, haydn_sdam_match);
+	if (IS_ERR_OR_NULL(nv))
+		return NULL;
+	haydn_sdam = nv;
+	return nv;
+}
+
+static void haydn_sdam_put(u8 code, u32 crc)
+{
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, code, crc, crc >> 8, crc >> 16,
+		      crc >> 24 };
+	struct nvmem_device *nv;
+
+	if (!READ_ONCE(haydn_pm_sdam) || irqs_disabled() || in_atomic())
+		return;
+	nv = haydn_sdam_get();
+	if (nv)
+		nvmem_device_write(nv, HAYDN_SDAM_OFF, sizeof(buf), buf);
+}
+
+/* step codes from suspend_enter(), see kernel/power/suspend.c */
+void haydn_pm_stage(u8 code)
+{
+	haydn_sdam_put(code, 0);
+}
+
+static u8 haydn_pm_code(pm_message_t state, const char *info, bool done)
+{
+	u8 code = 0;
+
+	if (info && !strncmp(info, "noirq", 5))
+		code = 2;
+	else if (info && (!strncmp(info, "late", 4) || !strncmp(info, "early", 5)))
+		code = 1;
+	if (!(state.event & (PM_EVENT_SUSPEND | PM_EVENT_FREEZE)))
+		code |= 4;	/* resume direction */
+	if (done)
+		code |= 8;
+	return code;
+}
+
+static const char * const haydn_steps[] = {
+	[0x20] = "dpm_suspend_noirq done",
+	[0x21] = "platform_suspend_prepare_noirq done",
+	[0x22] = "before disabling secondary CPUs",
+	[0x23] = "secondary CPUs off, before irqs off/syscore/firmware",
+	[0x24] = "s2idle loop entered",
+	[0x30] = "back: secondary CPUs on",
+	[0x31] = "back: before dpm_resume_noirq",
+	[0x3f] = "resume completed",
+};
+
+static void haydn_pmtrace_report(struct work_struct *w)
+{
+	struct nvmem_device *nv = haydn_sdam_get();
+	struct device *dev;
+	u8 b[6] = { 0 };
+	u32 crc;
+	bool found = false;
+
+	if (!nv) {
+		pr_info("haydn-pmtrace: SDAM sdam@8600 not found\n");
+		return;
+	}
+	if (nvmem_device_read(nv, HAYDN_SDAM_OFF, sizeof(b), b) != sizeof(b) ||
+	    b[0] != HAYDN_SDAM_MAGIC) {
+		pr_info("haydn-pmtrace: no record from the previous boot (%02x)\n", b[0]);
+		return;
+	}
+	crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
+	if (b[1] >= 0x20) {
+		pr_info("haydn-pmtrace: previous boot ended after step 0x%02x (%s)\n",
+			b[1], b[1] < ARRAY_SIZE(haydn_steps) && haydn_steps[b[1]] ?
+			haydn_steps[b[1]] : "?");
+	} else {
+		device_pm_lock();
+		list_for_each_entry(dev, &dpm_list, power.entry) {
+			if (crc32_le(0, dev_name(dev), strlen(dev_name(dev))) == crc) {
+				found = true;
+				break;
+			}
+		}
+		pr_info("haydn-pmtrace: previous boot ended at %s %s%s callback (%s), device %s %s (crc %08x)\n",
+			b[1] & 8 ? "after" : "inside",
+			b[1] & 4 ? "resume " : "suspend ",
+			(b[1] & 3) == 2 ? "noirq" : (b[1] & 3) == 1 ? "late/early" : "main",
+			b[1] & 8 ? "it returned" : "it never returned",
+			found ? dev_driver_string(dev) : "?",
+			found ? dev_name(dev) : "?", crc);
+		device_pm_unlock();
+	}
+	b[0] = 0;
+	nvmem_device_write(nv, HAYDN_SDAM_OFF, 1, b);
+}
+static DECLARE_DELAYED_WORK(haydn_pmtrace_work, haydn_pmtrace_report);
+
+static int __init haydn_pmtrace_init(void)
+{
+	schedule_delayed_work(&haydn_pmtrace_work, 20 * HZ);
+	return 0;
+}
+late_initcall_sync(haydn_pmtrace_init);
+
 static void haydn_pm_mark(struct device *dev, pm_message_t state,
 			  const char *info, pm_callback_t cb,
 			  const char *what, int error)
 {
+	if (READ_ONCE(haydn_pm_sdam))
+		haydn_sdam_put(haydn_pm_code(state, info, what[0] == 'd'),
+			       crc32_le(0, dev_name(dev), strlen(dev_name(dev))));
 	if (!READ_ONCE(haydn_pm_trace))
 		return;
 	if (!(state.event & (PM_EVENT_SUSPEND | PM_EVENT_FREEZE)))

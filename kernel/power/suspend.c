@@ -34,6 +34,9 @@
 
 #include "power.h"
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_stage(u8 code);
+
 const char * const pm_labels[] = {
 	[PM_SUSPEND_TO_IDLE] = "freeze",
 	[PM_SUSPEND_STANDBY] = "standby",
@@ -426,6 +429,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 					 suspend_stats.failed_devs[last_dev]);
 		goto Platform_early_resume;
 	}
+	haydn_pm_stage(0x20);
 	error = platform_suspend_prepare_noirq(state);
 	if (error)
 		goto Platform_wake;
@@ -434,16 +438,19 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		goto Platform_wake;
 
 	if (state == PM_SUSPEND_TO_IDLE) {
+		haydn_pm_stage(0x24);
 		s2idle_loop();
 		goto Platform_wake;
 	}
 
+	haydn_pm_stage(0x22);
 	error = suspend_disable_secondary_cpus();
 	if (error || suspend_test(TEST_CPUS)) {
 		log_suspend_abort_reason("Disabling non-boot cpus failed");
 		goto Enable_cpus;
 	}
 
+	haydn_pm_stage(0x23);
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
 
@@ -471,9 +478,11 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
  Enable_cpus:
 	suspend_enable_secondary_cpus();
+	haydn_pm_stage(0x30);
 
  Platform_wake:
 	platform_resume_noirq(state);
+	haydn_pm_stage(0x31);
 	dpm_resume_noirq(PMSG_RESUME);
 
  Platform_early_resume:
@@ -528,6 +537,7 @@ int suspend_devices_and_enter(suspend_state_t state)
  Resume_devices:
 	suspend_test_start();
 	dpm_resume_end(PMSG_RESUME);
+	haydn_pm_stage(0x3f);
 	suspend_test_finish("resume devices");
 	trace_suspend_resume(TPS("resume_console"), state, true);
 	resume_console();
