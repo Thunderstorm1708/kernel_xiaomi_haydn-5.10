@@ -702,6 +702,14 @@ Notes:
   #158+ records each threaded handler (`irq_thread_fn()`, bit 29) between
   "before dpm_resume_noirq" and "resume completed"; SPSS is enabled again
   (the subsys-pil-tz park stays).
+* #158 (threaded handlers recorded): no threaded handler ran; again
+  `device IRQ 38 spss` with no "re-enabled" record. So the hang is in the
+  hard handler of the first pending IRQ, whichever device that is (spss,
+  sps): handlers run right after resume_device_irqs(), before the early
+  resume callbacks (dispcc/videocc/camcc pm_runtime_force_resume, IPA,
+  i2c-geni, ...) restore what the hardware needs. Diag #160+:
+  `haydn_late_irqs=1` (core_param 0644) moves resume_device_irqs() from
+  dpm_resume_noirq() to the end of dpm_resume_early().
 * Fix candidate (diag #152+): subsys-pil-tz registers a PM notifier per
   subsystem with a generic IRQ; at PM_SUSPEND_PREPARE it drops the wake flag
   and disables the IRQ, at PM_POST_SUSPEND it re-enables both, so anything
@@ -1045,7 +1053,8 @@ instead:
 | #152 | Zorix A16 | Still resets; breadcrumb again IRQ 38 (not the culprit, see above) | SPSS generic IRQ parked across suspend |
 | #154 | Zorix A16 | Still resets; breadcrumb `device IRQ 38 spss`, no wake IRQ after it | breadcrumb records wake IRQs |
 | #156 | Zorix A16 | Still resets; breadcrumb "IRQ 38" again but a different device (`sps`) | SPSS disabled in DT |
-| #158+ | Zorix A16 | to be tested | diag: breadcrumb records threaded IRQ handlers on resume; SPSS back |
+| #158 | Zorix A16 | Still resets; no threaded handler, hang in the first hard handler on resume | threaded IRQ breadcrumb |
+| #160+ | Zorix A16 | to be tested | diag: `haydn_late_irqs=1`, device IRQs re-enabled after early resume |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
