@@ -27,6 +27,7 @@
 
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
+#include <linux/suspend.h>
 
 #include "peripheral-loader.h"
 
@@ -121,6 +122,9 @@ struct pil_tz_data {
 	int stop_ack_irq;
 	int wdog_bite_irq;
 	int generic_irq;
+	bool generic_irq_on;
+	bool generic_irq_parked;
+	struct notifier_block pm_nb;
 	int ramdump_disable_irq;
 	int shutdown_ack_irq;
 	int force_stop_bit;
@@ -1145,6 +1149,7 @@ static void subsys_enable_all_irqs(struct pil_tz_data *d)
 		unmask_scsr_irqs(d);
 		enable_irq(d->generic_irq);
 		irq_set_irq_wake(d->generic_irq, 1);
+		d->generic_irq_on = true;
 	}
 }
 
@@ -1166,7 +1171,43 @@ static void subsys_disable_all_irqs(struct pil_tz_data *d)
 		mask_scsr_irqs(d);
 		irq_set_irq_wake(d->generic_irq, 0);
 		disable_irq(d->generic_irq);
+		d->generic_irq_on = false;
 	}
+}
+
+/*
+ * haydn: the system-suspend hang. A PMIC SDAM breadcrumb in the PM core
+ * showed the SoC hanging on resume exactly when resume_device_irqs()
+ * re-enabled IRQ 38, this generic SCSR IRQ of the SPSS PIL (GIC SPI 352).
+ * subsys_generic_handler() reads the SP2SOC/RMB registers at 0x188xxxx; a
+ * pending interrupt runs it before the early/normal resume callbacks have
+ * restored the votes that block needs, and the read hangs the SoC.
+ * Keep the IRQ disabled (and not a wake source) from PM_SUSPEND_PREPARE
+ * until PM_POST_SUSPEND, when everything is back up; anything the SP
+ * signalled meanwhile is handled then.
+ */
+static int pil_tz_pm_notify(struct notifier_block *nb, unsigned long action,
+			    void *data)
+{
+	struct pil_tz_data *d = container_of(nb, struct pil_tz_data, pm_nb);
+
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		if (d->generic_irq_on && !d->generic_irq_parked) {
+			irq_set_irq_wake(d->generic_irq, 0);
+			disable_irq(d->generic_irq);
+			d->generic_irq_parked = true;
+		}
+		break;
+	case PM_POST_SUSPEND:
+		if (d->generic_irq_parked) {
+			d->generic_irq_parked = false;
+			enable_irq(d->generic_irq);
+			irq_set_irq_wake(d->generic_irq, 1);
+		}
+		break;
+	}
+	return NOTIFY_DONE;
 }
 
 static int __get_irq(struct platform_device *pdev, const char *prop,
@@ -1579,6 +1620,11 @@ static int pil_tz_generic_probe(struct platform_device *pdev)
 		goto err_subsys;
 	}
 
+	if (d->generic_irq) {
+		d->pm_nb.notifier_call = pil_tz_pm_notify;
+		register_pm_notifier(&d->pm_nb);
+	}
+
 	return 0;
 err_subsys:
 	destroy_ramdump_device(d->minidump_dev);
@@ -1638,6 +1684,8 @@ static int pil_tz_driver_exit(struct platform_device *pdev)
 	if (match->data == pil_tz_scm_pas_probe) {
 		icc_put(scm_perf_client);
 	} else {
+		if (d->pm_nb.notifier_call)
+			unregister_pm_notifier(&d->pm_nb);
 		subsys_unregister(d->subsys);
 		destroy_ramdump_device(d->ramdump_dev);
 		destroy_ramdump_device(d->minidump_dev);
