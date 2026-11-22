@@ -671,6 +671,19 @@ Notes:
   50 us so a pending interrupt runs; stage 0x32 is written after
   resume_device_irqs(). The next boot prints `previous boot ended while
   re-enabling device IRQ <n> on resume: <name> (chip, hwirq)`.
+* **#150 result: IRQ 38, `spss` (GICv3 hwirq 384 = SPI 352).** That is the
+  generic SCSR IRQ of the SPSS PIL node `qcom,spss@1880000`
+  (`qcom,pil-tz-generic`, `qcom,pil-generic-irq-handler`), handled by
+  `subsys_generic_handler()` in drivers/soc/qcom/subsys-pil-tz.c, a hard IRQ
+  handler that reads sp2soc_irq_status / rmb_err_spare2 at 0x188xxxx. It is
+  a wake IRQ; when resume_device_irqs() re-enables it with an interrupt
+  pending, the handler reads that block before the resume callbacks have
+  restored its votes, and the read hangs the SoC.
+* Fix candidate (diag #152+): subsys-pil-tz registers a PM notifier per
+  subsystem with a generic IRQ; at PM_SUSPEND_PREPARE it drops the wake flag
+  and disables the IRQ, at PM_POST_SUSPEND it re-enables both, so anything
+  the SP signalled while asleep is handled once resume is complete. SPSS
+  events can no longer wake the phone by themselves.
 * Diag #146+: PMIC SDAM breadcrumb (`haydn_pm_sdam=1`, drivers/base/power/
   main.c). pmk8350 SDAM 23 (`sdam@8600`, not used on lahaina; yupik uses
   only 0xbf) keeps its contents across any reset short of removing the
@@ -1005,7 +1018,8 @@ instead:
 | #144 | Zorix A16 | Still resets with screen off (bootlog ruled out) | bootlog pauses logdump writes during suspend |
 | #146 | Zorix A16 | Reset after ~10 min; no breadcrumb (SDAM 23 did not keep the writes) | PMIC SDAM suspend breadcrumb |
 | #148 | Zorix A16 | Breadcrumb works: hang right after `cnss_pci` resume noirq returned (resume side) | breadcrumb in SDAM 2 at 0x4a |
-| #150+ | Zorix A16 | to be tested | diag: breadcrumb per IRQ re-enabled in resume_irqs() |
+| #150 | Zorix A16 | Breadcrumb: hang while re-enabling IRQ 38 `spss` (SPI 352) on resume | breadcrumb per IRQ in resume_irqs() |
+| #152+ | Zorix A16 | to be tested | diag: SPSS generic IRQ parked from PM_SUSPEND_PREPARE to PM_POST_SUSPEND |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
