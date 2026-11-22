@@ -608,11 +608,14 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	}
 	crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
 	if (b[1] == 0x40) {
-		struct irq_desc *desc = irq_to_desc(crc);
+		bool wake = crc & 0x80000000u;
+		struct irq_desc *desc = irq_to_desc(crc & ~0x80000000u);
 		struct irq_data *d = desc ? irq_desc_get_irq_data(desc) : NULL;
 
-		pr_info("haydn-pmtrace: previous boot ended while re-enabling device IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
-			crc, desc && desc->action && desc->action->name ?
+		crc &= ~0x80000000u;
+
+		pr_info("haydn-pmtrace: previous boot ended while re-enabling %s IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
+			wake ? "WAKE" : "device", crc, desc && desc->action && desc->action->name ?
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);

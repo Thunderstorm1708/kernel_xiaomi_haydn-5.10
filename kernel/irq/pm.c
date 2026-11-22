@@ -209,8 +209,15 @@ static void resume_irqs(bool want_early)
 		 * pending interrupt time to run, so the breadcrumb names the
 		 * IRQ whose handler hangs.
 		 */
-		if (haydn && (desc->istate & IRQS_SUSPENDED))
-			haydn_pm_irq(irq);
+		/*
+		 * Wake IRQs are not IRQS_SUSPENDED (they stay armed through
+		 * suspend) but resume_irq() replays a pending one here, so
+		 * record those too (#152 showed the last suspended IRQ only).
+		 */
+		if (haydn && ((desc->istate & IRQS_SUSPENDED) ||
+			      irqd_is_wakeup_armed(&desc->irq_data)))
+			haydn_pm_irq(irq | (irqd_is_wakeup_armed(&desc->irq_data) ?
+					    0x80000000u : 0));
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
