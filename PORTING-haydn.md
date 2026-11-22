@@ -658,6 +658,19 @@ Notes:
   HLOS), bytes 0x4a-0x4f (zero before), and zeroes them after reading.
   Also: the extra SPMI writes slow suspend/resume enough to trigger a
   "Process system isn't responding" dialog on wake (debug only).
+* **#148 breadcrumb result: the hang is on resume, not suspend.**
+  `haydn-pmtrace: previous boot ended at after resume noirq callback (it
+  returned), device cnss_pci 0000:01:00.0`. The WLAN endpoint is the last
+  device with a noirq resume callback, and dpm_resume_noirq() calls
+  resume_device_irqs() right after the noirq callbacks, before any early
+  resume callback has turned clocks back on. So most likely a pending
+  interrupt whose handler touches unclocked hardware (WLAN CE/MHI or IPA/GSI,
+  which serves both Wi-Fi offload and mobile data) hangs the SoC.
+* Diag #150+: `resume_irqs()` (kernel/irq/pm.c) writes each suspended IRQ
+  to the breadcrumb (code 0x40, IRQ number) before re-enabling it and waits
+  50 us so a pending interrupt runs; stage 0x32 is written after
+  resume_device_irqs(). The next boot prints `previous boot ended while
+  re-enabling device IRQ <n> on resume: <name> (chip, hwirq)`.
 * Diag #146+: PMIC SDAM breadcrumb (`haydn_pm_sdam=1`, drivers/base/power/
   main.c). pmk8350 SDAM 23 (`sdam@8600`, not used on lahaina; yupik uses
   only 0xbf) keeps its contents across any reset short of removing the
@@ -991,7 +1004,8 @@ instead:
 | #142 | Zorix A16 | keep_ufs + pm_test devices passes; real suspend still hangs (also with UFS spm_lvl 1 and 2) | `haydn_pm_keep_ufs` switch |
 | #144 | Zorix A16 | Still resets with screen off (bootlog ruled out) | bootlog pauses logdump writes during suspend |
 | #146 | Zorix A16 | Reset after ~10 min; no breadcrumb (SDAM 23 did not keep the writes) | PMIC SDAM suspend breadcrumb |
-| #148+ | Zorix A16 | to be tested | diag: breadcrumb moved to SDAM 2 at 0x4a |
+| #148 | Zorix A16 | Breadcrumb works: hang right after `cnss_pci` resume noirq returned (resume side) | breadcrumb in SDAM 2 at 0x4a |
+| #150+ | Zorix A16 | to be tested | diag: breadcrumb per IRQ re-enabled in resume_irqs() |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
