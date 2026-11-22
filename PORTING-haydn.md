@@ -651,6 +651,13 @@ Notes:
   PM_SUSPEND_PREPARE).
 * #144 (bootlog paused through suspend): still resets with screen off. So
   bootlog is not the cause.
+* #146: the breadcrumb did not survive: sdam@8600 reads
+  `17 01 00 00 04 00 18 00 24 00 1e 00 18 00 24 00` at 0x40, someone else's
+  data, and our writes at 0x48 did not stick. #148+ moves it to SDAM 2
+  (sdam@7100, which holds the restart reason at 0x48 and is writable from
+  HLOS), bytes 0x4a-0x4f (zero before), and zeroes them after reading.
+  Also: the extra SPMI writes slow suspend/resume enough to trigger a
+  "Process system isn't responding" dialog on wake (debug only).
 * Diag #146+: PMIC SDAM breadcrumb (`haydn_pm_sdam=1`, drivers/base/power/
   main.c). pmk8350 SDAM 23 (`sdam@8600`, not used on lahaina; yupik uses
   only 0xbf) keeps its contents across any reset short of removing the
@@ -983,7 +990,8 @@ instead:
 | #138 (pm_test) | Zorix A16 | Hangs at pm_test core/platform/devices, not at freezer; s2idle hangs too | |
 | #142 | Zorix A16 | keep_ufs + pm_test devices passes; real suspend still hangs (also with UFS spm_lvl 1 and 2) | `haydn_pm_keep_ufs` switch |
 | #144 | Zorix A16 | Still resets with screen off (bootlog ruled out) | bootlog pauses logdump writes during suspend |
-| #146+ | Zorix A16 | to be tested | diag: PMIC SDAM suspend breadcrumb (`haydn-pmtrace:`) |
+| #146 | Zorix A16 | Reset after ~10 min; no breadcrumb (SDAM 23 did not keep the writes) | PMIC SDAM suspend breadcrumb |
+| #148+ | Zorix A16 | to be tested | diag: breadcrumb moved to SDAM 2 at 0x4a |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
