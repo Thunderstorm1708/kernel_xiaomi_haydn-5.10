@@ -710,6 +710,18 @@ Notes:
   i2c-geni, ...) restore what the hardware needs. Diag #160+:
   `haydn_late_irqs=1` (core_param 0644) moves resume_device_irqs() from
   dpm_resume_noirq() to the end of dpm_resume_early().
+* #160 (`haydn_late_irqs=1`): still resets, breadcrumb again "device IRQ 38
+  spss" although device IRQs are now re-enabled only after early resume.
+  The same position under three different timings suggests the breadcrumb
+  itself stops landing there rather than IRQ 38 being the culprit. It now
+  resets on the first screen-off suspend (~30 s). With the breadcrumb and
+  trace switched off live (`haydn_pm_sdam=0`, `haydn_pm_trace=0`) and
+  `haydn_late_irqs=Y` it still resets. Open for next session: verify that
+  SDAM writes land late in resume (e.g. a write in dpm_resume_end and in a
+  PM_POST_SUSPEND notifier), check whether the PMIC arbiter / SPMI is
+  usable at that point, and compare with a build without any of the
+  haydn diag suspend hooks (pm trace, SDAM, IRQ breadcrumb, bootlog pause,
+  SPSS park, late IRQs) to rule out the instrumentation.
 * Fix candidate (diag #152+): subsys-pil-tz registers a PM notifier per
   subsystem with a generic IRQ; at PM_SUSPEND_PREPARE it drops the wake flag
   and disables the IRQ, at PM_POST_SUSPEND it re-enables both, so anything
@@ -1054,7 +1066,7 @@ instead:
 | #154 | Zorix A16 | Still resets; breadcrumb `device IRQ 38 spss`, no wake IRQ after it | breadcrumb records wake IRQs |
 | #156 | Zorix A16 | Still resets; breadcrumb "IRQ 38" again but a different device (`sps`) | SPSS disabled in DT |
 | #158 | Zorix A16 | Still resets; no threaded handler, hang in the first hard handler on resume | threaded IRQ breadcrumb |
-| #160+ | Zorix A16 | to be tested | diag: `haydn_late_irqs=1`, device IRQs re-enabled after early resume |
+| #160 | Zorix A16 | Still resets (also with breadcrumb/trace off); breadcrumb "IRQ 38" again | `haydn_late_irqs=1` |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
