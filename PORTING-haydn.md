@@ -649,6 +649,19 @@ Notes:
   (`bootlog.pause_suspend`, default 1, 0644). If the hangs stop, that is
   the fix (and the per-device trace is no longer written past
   PM_SUSPEND_PREPARE).
+* #144 (bootlog paused through suspend): still resets with screen off. So
+  bootlog is not the cause.
+* Diag #146+: PMIC SDAM breadcrumb (`haydn_pm_sdam=1`, drivers/base/power/
+  main.c). pmk8350 SDAM 23 (`sdam@8600`, not used on lahaina; yupik uses
+  only 0xbf) keeps its contents across any reset short of removing the
+  battery. Before and after every PM callback, suspend and resume, all
+  phases, 6 bytes go to offset 0x48: 0xa5, a step code (bit 3 done, bit 2
+  resume, bits 0-1 main/late/noirq), crc32 of the device name. suspend_enter()
+  also writes stage codes 0x20 (noirq done), 0x22 (before CPU offline),
+  0x23 (before irqs off/syscore/firmware), 0x24 (s2idle), 0x30/0x31 (back),
+  0x3f (resume completed). 20 s after the next boot the kernel prints
+  `haydn-pmtrace: previous boot ended ...` with the device name, then clears
+  the magic. Never written with interrupts off (SPMI regmap may sleep).
 * Diag #128+: `haydn_pm_trace=1` (`core_param`, 0644, live in
   `/sys/module/kernel/parameters/haydn_pm_trace`) logs every
   suspend-direction device callback in `dpm_run_callback()` before
@@ -969,7 +982,8 @@ instead:
 | #138 | Zorix A16 | **Missing text and blinking fixed** | KGSL cmd/obj/sync lists copied the 5.4 way; non-coherent `kgsl_smmu` walks (both moved to main) |
 | #138 (pm_test) | Zorix A16 | Hangs at pm_test core/platform/devices, not at freezer; s2idle hangs too | |
 | #142 | Zorix A16 | keep_ufs + pm_test devices passes; real suspend still hangs (also with UFS spm_lvl 1 and 2) | `haydn_pm_keep_ufs` switch |
-| #144+ | Zorix A16 | to be tested | diag: bootlog pauses logdump writes during suspend |
+| #144 | Zorix A16 | Still resets with screen off (bootlog ruled out) | bootlog pauses logdump writes during suspend |
+| #146+ | Zorix A16 | to be tested | diag: PMIC SDAM suspend breadcrumb (`haydn-pmtrace:`) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
