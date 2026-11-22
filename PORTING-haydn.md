@@ -692,6 +692,16 @@ Notes:
   `/soc/qcom,spss@1880000` through the haydn overlay; SPSS backs optional
   StrongBox only), and the breadcrumb also records "IRQ n re-enabled + 50 us
   passed" (bit 30) for suspended IRQs and IRQ 38.
+* #156 (SPSS disabled): still resets, breadcrumb again "IRQ 38", now
+  `sps` (BAM, hwirq 304) because the numbering shifted without SPSS, and
+  no "re-enabled + 50 us" record. Two different devices at the same loop
+  position, and pm_test=devices (which never runs resume_device_irqs())
+  also hangs: the hang is asynchronous, about 2 ms into resume_irqs(), not
+  IRQ 38 itself. Suspect: a threaded IRQ handler, which runs in its kthread
+  shortly after its IRQ is re-enabled while the loop has moved on. Diag
+  #158+ records each threaded handler (`irq_thread_fn()`, bit 29) between
+  "before dpm_resume_noirq" and "resume completed"; SPSS is enabled again
+  (the subsys-pil-tz park stays).
 * Fix candidate (diag #152+): subsys-pil-tz registers a PM notifier per
   subsystem with a generic IRQ; at PM_SUSPEND_PREPARE it drops the wake flag
   and disables the IRQ, at PM_POST_SUSPEND it re-enables both, so anything
@@ -1034,7 +1044,8 @@ instead:
 | #150 | Zorix A16 | Breadcrumb: hang while re-enabling IRQ 38 `spss` (SPI 352) on resume | breadcrumb per IRQ in resume_irqs() |
 | #152 | Zorix A16 | Still resets; breadcrumb again IRQ 38 (not the culprit, see above) | SPSS generic IRQ parked across suspend |
 | #154 | Zorix A16 | Still resets; breadcrumb `device IRQ 38 spss`, no wake IRQ after it | breadcrumb records wake IRQs |
-| #156+ | Zorix A16 | to be tested | diag: SPSS disabled in DT; breadcrumb also after each IRQ |
+| #156 | Zorix A16 | Still resets; breadcrumb "IRQ 38" again but a different device (`sps`) | SPSS disabled in DT |
+| #158+ | Zorix A16 | to be tested | diag: breadcrumb records threaded IRQ handlers on resume; SPSS back |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
