@@ -1176,11 +1176,15 @@ irq_forced_thread_fn(struct irq_desc *desc, struct irqaction *action)
  * preemtible - many of them need to sleep and wait for slow busses to
  * complete.
  */
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_irq_thread(unsigned int irq);
+
 static irqreturn_t irq_thread_fn(struct irq_desc *desc,
 		struct irqaction *action)
 {
 	irqreturn_t ret;
 
+	haydn_pm_irq_thread(action->irq);
 	ret = action->thread_fn(action->irq, action->dev_id);
 	if (ret == IRQ_HANDLED)
 		atomic_inc(&desc->threads_handled);

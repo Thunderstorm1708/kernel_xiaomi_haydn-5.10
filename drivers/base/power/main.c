@@ -509,6 +509,7 @@ core_param(haydn_pm_keep_ufs, haydn_pm_keep_ufs, bool, 0644);
 static bool haydn_pm_sdam;
 core_param(haydn_pm_sdam, haydn_pm_sdam, bool, 0644);
 static struct nvmem_device *haydn_sdam;
+static bool haydn_pm_resuming;
 #define HAYDN_SDAM_OFF	0x4a
 #define HAYDN_SDAM_MAGIC	0xa5
 
@@ -548,12 +549,29 @@ static void haydn_sdam_put(u8 code, u32 crc)
 /* step codes from suspend_enter(), see kernel/power/suspend.c */
 void haydn_pm_stage(u8 code)
 {
+	if (code == 0x31)
+		WRITE_ONCE(haydn_pm_resuming, true);
+	else if (code == 0x3f)
+		WRITE_ONCE(haydn_pm_resuming, false);
 	haydn_sdam_put(code, 0);
 }
 
 bool haydn_pm_irq_wanted(void)
 {
 	return READ_ONCE(haydn_pm_sdam);
+}
+
+/*
+ * Threaded IRQ handlers run in a kthread a little after their IRQ is
+ * re-enabled, so a hang inside one shows up as a later position of the
+ * resume_irqs() loop. Between "before dpm_resume_noirq" and "resume
+ * completed" record each threaded handler (bit 29) before it runs; the
+ * thread is sleepable, so the SPMI write is allowed.
+ */
+void haydn_pm_irq_thread(unsigned int irq)
+{
+	if (READ_ONCE(haydn_pm_resuming))
+		haydn_sdam_put(0x40, irq | 0x20000000u);
 }
 
 /* kernel/irq/pm.c: about to re-enable this device IRQ on resume */
@@ -610,10 +628,17 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	if (b[1] == 0x40) {
 		bool wake = crc & 0x80000000u;
 		bool after = crc & 0x40000000u;
-		struct irq_desc *desc = irq_to_desc(crc & 0x3fffffffu);
+		bool thread = crc & 0x20000000u;
+		struct irq_desc *desc = irq_to_desc(crc & 0x1fffffffu);
 		struct irq_data *d = desc ? irq_desc_get_irq_data(desc) : NULL;
 
-		crc &= 0x3fffffffu;
+		crc &= 0x1fffffffu;
+		if (thread)
+			pr_info("haydn-pmtrace: previous boot ended inside the THREADED handler of IRQ %u: %s (chip %s, hwirq %lu)\n",
+				crc, desc && desc->action && desc->action->name ?
+				desc->action->name : "?",
+				d && d->chip && d->chip->name ? d->chip->name : "?",
+				d ? d->hwirq : 0);
 		if (after)
 			pr_info("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
 				crc);
