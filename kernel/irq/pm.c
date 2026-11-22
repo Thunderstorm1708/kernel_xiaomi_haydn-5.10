@@ -221,8 +221,14 @@ static void resume_irqs(bool want_early)
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
-		if (haydn)
+		if (haydn && ((desc->istate & IRQS_SUSPENDED) ||
+			      irq == 38)) {
 			udelay(50);
+			/* bit 30: resume_irq() returned and 50 us passed */
+			haydn_pm_irq(irq | 0x40000000u);
+		} else if (haydn) {
+			udelay(50);
+		}
 	}
 }
 

@@ -39,6 +39,16 @@ And public attribution of xiaomi platforms(like venus and so and)
 };
 
 /*
+ * DIAG test: the system-suspend hang happens on resume exactly while IRQ 38
+ * (SPSS PIL generic SCSR IRQ, SPI 352) is re-enabled, also with that IRQ
+ * parked by subsys-pil-tz. Do not load the Secure Processor at all, to see
+ * whether the hang goes away (SPSS backs optional StrongBox only).
+ */
+&{/soc/qcom,spss@1880000} {
+	status = "disabled";
+};
+
+/*
  * DIAG: show the kernel console on the splash buffer the bootloader leaves
  * scanning out (1080x2400). no-map so simplefb can ioremap it.
  */

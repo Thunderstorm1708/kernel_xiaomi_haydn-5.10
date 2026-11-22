@@ -609,10 +609,14 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
 	if (b[1] == 0x40) {
 		bool wake = crc & 0x80000000u;
-		struct irq_desc *desc = irq_to_desc(crc & ~0x80000000u);
+		bool after = crc & 0x40000000u;
+		struct irq_desc *desc = irq_to_desc(crc & 0x3fffffffu);
 		struct irq_data *d = desc ? irq_desc_get_irq_data(desc) : NULL;
 
-		crc &= ~0x80000000u;
+		crc &= 0x3fffffffu;
+		if (after)
+			pr_info("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
+				crc);
 
 		pr_info("haydn-pmtrace: previous boot ended while re-enabling %s IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
 			wake ? "WAKE" : "device", crc, desc && desc->action && desc->action->name ?
