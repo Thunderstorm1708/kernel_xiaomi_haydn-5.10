@@ -1067,6 +1067,7 @@ instead:
 | #156 | Zorix A16 | Still resets; breadcrumb "IRQ 38" again but a different device (`sps`) | SPSS disabled in DT |
 | #158 | Zorix A16 | Still resets; no threaded handler, hang in the first hard handler on resume | threaded IRQ breadcrumb |
 | #160 | Zorix A16 | Still resets (also with breadcrumb/trace off); breadcrumb "IRQ 38" again | `haydn_late_irqs=1` |
+| #162+ | Zorix A16 | to be tested | diag: suspend debug hooks off by default (no `haydn_pm_trace`, `haydn_pm_sdam`, `haydn_late_irqs` on the cmdline) |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
