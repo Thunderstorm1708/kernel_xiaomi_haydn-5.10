@@ -6,6 +6,7 @@
  */
 
 #include <linux/irq.h>
+#include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/suspend.h>
@@ -181,8 +182,13 @@ resume:
 	__enable_irq(desc);
 }
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_irq(unsigned int irq);
+bool haydn_pm_irq_wanted(void);
+
 static void resume_irqs(bool want_early)
 {
+	bool haydn = !want_early && haydn_pm_irq_wanted();
 	struct irq_desc *desc;
 	int irq;
 
@@ -196,9 +202,20 @@ static void resume_irqs(bool want_early)
 		if (irq_settings_is_nested_thread(desc))
 			continue;
 
+		/*
+		 * haydn: the resume hang comes right after the last noirq
+		 * resume callback, i.e. when device IRQs are re-enabled here.
+		 * Record each suspended IRQ before enabling it and give a
+		 * pending interrupt time to run, so the breadcrumb names the
+		 * IRQ whose handler hangs.
+		 */
+		if (haydn && (desc->istate & IRQS_SUSPENDED))
+			haydn_pm_irq(irq);
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
+		if (haydn)
+			udelay(50);
 	}
 }
 

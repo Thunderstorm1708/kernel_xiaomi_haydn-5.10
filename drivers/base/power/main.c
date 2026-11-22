@@ -38,6 +38,8 @@
 #include <linux/crc32.h>
 #include <linux/of.h>
 #include <linux/workqueue.h>
+#include <linux/irq.h>
+#include <linux/irqdesc.h>
 #include <linux/devfreq.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
@@ -549,6 +551,17 @@ void haydn_pm_stage(u8 code)
 	haydn_sdam_put(code, 0);
 }
 
+bool haydn_pm_irq_wanted(void)
+{
+	return READ_ONCE(haydn_pm_sdam);
+}
+
+/* kernel/irq/pm.c: about to re-enable this device IRQ on resume */
+void haydn_pm_irq(unsigned int irq)
+{
+	haydn_sdam_put(0x40, irq);
+}
+
 static u8 haydn_pm_code(pm_message_t state, const char *info, bool done)
 {
 	u8 code = 0;
@@ -572,6 +585,7 @@ static const char * const haydn_steps[] = {
 	[0x24] = "s2idle loop entered",
 	[0x30] = "back: secondary CPUs on",
 	[0x31] = "back: before dpm_resume_noirq",
+	[0x32] = "device IRQs re-enabled",
 	[0x3f] = "resume completed",
 };
 
@@ -593,7 +607,16 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		return;
 	}
 	crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
-	if (b[1] >= 0x20) {
+	if (b[1] == 0x40) {
+		struct irq_desc *desc = irq_to_desc(crc);
+		struct irq_data *d = desc ? irq_desc_get_irq_data(desc) : NULL;
+
+		pr_info("haydn-pmtrace: previous boot ended while re-enabling device IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
+			crc, desc && desc->action && desc->action->name ?
+			desc->action->name : "?",
+			d && d->chip && d->chip->name ? d->chip->name : "?",
+			d ? d->hwirq : 0);
+	} else if (b[1] >= 0x20) {
 		pr_info("haydn-pmtrace: previous boot ended after step 0x%02x (%s)\n",
 			b[1], b[1] < ARRAY_SIZE(haydn_steps) && haydn_steps[b[1]] ?
 			haydn_steps[b[1]] : "?");
@@ -950,6 +973,7 @@ void dpm_resume_noirq(pm_message_t state)
 	dpm_noirq_resume_devices(state);
 
 	resume_device_irqs();
+	haydn_pm_stage(0x32);
 	device_wakeup_disarm_wake_irqs();
 
 	cpuidle_resume();
