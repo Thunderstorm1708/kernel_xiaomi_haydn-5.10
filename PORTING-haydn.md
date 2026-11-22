@@ -686,6 +686,12 @@ Notes:
   IRQ (its handler cannot run), so it was just the last recorded IRQ before
   the culprit. Diag #154+ records wake-armed IRQs too (bit 31 = wake; the
   report says "WAKE IRQ").
+* #154 (wake IRQs recorded too): still `device IRQ 38 spss`, no wake IRQ
+  and no stage 0x32 after it, so the hang is right at IRQ 38 even with the
+  IRQ parked. Diag #156+: SPSS not loaded at all (`status = "disabled"` on
+  `/soc/qcom,spss@1880000` through the haydn overlay; SPSS backs optional
+  StrongBox only), and the breadcrumb also records "IRQ n re-enabled + 50 us
+  passed" (bit 30) for suspended IRQs and IRQ 38.
 * Fix candidate (diag #152+): subsys-pil-tz registers a PM notifier per
   subsystem with a generic IRQ; at PM_SUSPEND_PREPARE it drops the wake flag
   and disables the IRQ, at PM_POST_SUSPEND it re-enables both, so anything
@@ -1027,7 +1033,8 @@ instead:
 | #148 | Zorix A16 | Breadcrumb works: hang right after `cnss_pci` resume noirq returned (resume side) | breadcrumb in SDAM 2 at 0x4a |
 | #150 | Zorix A16 | Breadcrumb: hang while re-enabling IRQ 38 `spss` (SPI 352) on resume | breadcrumb per IRQ in resume_irqs() |
 | #152 | Zorix A16 | Still resets; breadcrumb again IRQ 38 (not the culprit, see above) | SPSS generic IRQ parked across suspend |
-| #154+ | Zorix A16 | to be tested | diag: breadcrumb also records wake-armed IRQs |
+| #154 | Zorix A16 | Still resets; breadcrumb `device IRQ 38 spss`, no wake IRQ after it | breadcrumb records wake IRQs |
+| #156+ | Zorix A16 | to be tested | diag: SPSS disabled in DT; breadcrumb also after each IRQ |
 | #82+ (earlier list) | Zorix A16 | see above | UCSI connector; routing read/write stubs; us_prox poll handlers; 15.6 ms power key debounce; async thermal resume; diag: no L1ss on PCIe0 | GEM objects freed from a worker under struct_mutex (below); diag console `loglevel=4` |
 
 Non-fatal errors seen on screen (being worked through):
