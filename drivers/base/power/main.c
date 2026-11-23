@@ -44,6 +44,8 @@
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
 
+#include <linux/spmi.h>
+#include <linux/of_platform.h>
 #include "../base.h"
 #include "power.h"
 
@@ -533,6 +535,49 @@ static struct nvmem_device *haydn_sdam_get(void)
 	return nv;
 }
 
+/*
+ * haydn: #174-#178 show the SoC dying a few microseconds after IRQ 38 is
+ * handled on resume, with no device of ours at fault, i.e. inside some
+ * hard IRQ handler. nvmem/regmap may sleep, so from hard IRQ context write
+ * the same 6 bytes straight over SPMI (pmic_arb uses a raw spinlock):
+ * bit 25 = hard handler entered, bit 26 = it returned. Only between
+ * "before dpm_resume_noirq" and "resume completed".
+ */
+static struct spmi_device *haydn_sdev;
+
+static void haydn_sdev_get(void)
+{
+	struct device_node *np;
+	struct platform_device *pdev;
+
+	if (haydn_sdev)
+		return;
+	np = of_find_node_by_name(NULL, "sdam");
+	while (np && strcmp(np->full_name, "sdam@7100"))
+		np = of_find_node_by_name(np, "sdam");
+	if (!np)
+		return;
+	pdev = of_find_device_by_node(np);
+	of_node_put(np);
+	/* sdam -> PMIC spmi_device -> SPMI controller (both on the spmi bus) */
+	if (pdev && pdev->dev.parent && pdev->dev.parent->bus &&
+	    !strcmp(pdev->dev.parent->bus->name, "spmi") &&
+	    pdev->dev.parent->parent && pdev->dev.parent->parent->bus &&
+	    !strcmp(pdev->dev.parent->parent->bus->name, "spmi"))
+		haydn_sdev = to_spmi_device(pdev->dev.parent);
+}
+
+void haydn_pm_hardirq(unsigned int irq, bool done)
+{
+	u32 v = irq | (done ? 0x04000000u : 0x02000000u);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x40, v, v >> 8, v >> 16, v >> 24 };
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+
+	if (!READ_ONCE(haydn_pm_resuming) || !sdev)
+		return;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+
 static void haydn_sdam_put(u8 code, u32 crc)
 {
 	u8 buf[6] = { HAYDN_SDAM_MAGIC, code, crc, crc >> 8, crc >> 16,
@@ -549,8 +594,10 @@ static void haydn_sdam_put(u8 code, u32 crc)
 /* step codes from suspend_enter(), see kernel/power/suspend.c */
 void haydn_pm_stage(u8 code)
 {
-	if (code == 0x31)
+	if (code == 0x31) {
+		haydn_sdev_get();
 		WRITE_ONCE(haydn_pm_resuming, true);
+	}
 	else if (code == 0x3f)
 		WRITE_ONCE(haydn_pm_resuming, false);
 	haydn_sdam_put(code, 0);
@@ -646,13 +693,21 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		bool thread = crc & 0x20000000u;
 		bool busy = crc & 0x10000000u;
 		bool unlocked = crc & 0x08000000u;
+		bool hdone = crc & 0x04000000u;
+		bool hentry = crc & 0x02000000u;
 		unsigned int depth = (crc >> 16) & 0xffu;
 		struct irq_desc *desc;
 		struct irq_data *d;
 
-		crc &= (busy || unlocked) ? 0xffffu : 0x07ffffffu;
+		crc &= (busy || unlocked || hdone || hentry) ? 0xffffu : 0x01ffffffu;
 		desc = irq_to_desc(crc);
 		d = desc ? irq_desc_get_irq_data(desc) : NULL;
+		if (hentry)
+			HREPORT("haydn-pmtrace: previous boot ended INSIDE the hard IRQ handler of IRQ %u (it never returned)\n",
+				crc);
+		if (hdone)
+			HREPORT("haydn-pmtrace: IRQ %u hard handler returned; nothing was recorded after it\n",
+				crc);
 		if (busy)
 			HREPORT("haydn-pmtrace: IRQ %u: its lock was HELD by someone else on resume; hung waiting for it\n",
 				crc);
@@ -669,7 +724,9 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			HREPORT("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
 				crc);
 
-		HREPORT("haydn-pmtrace: previous boot ended while re-enabling %s IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
+		HREPORT("haydn-pmtrace: %s %s IRQ %u: %s (chip %s, hwirq %lu)\n",
+			(hentry || hdone) ? "that is" :
+			"previous boot ended while re-enabling",
 			wake ? "WAKE" : "device", crc, desc && desc->action && desc->action->name ?
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",

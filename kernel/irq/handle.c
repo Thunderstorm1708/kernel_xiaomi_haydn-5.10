@@ -134,6 +134,9 @@ void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 	wake_up_process(action->thread);
 }
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_hardirq(unsigned int irq, bool done);
+
 irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc, unsigned int *flags)
 {
 	irqreturn_t retval = IRQ_NONE;
@@ -153,7 +156,9 @@ irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc, unsigned int *flags
 			lockdep_hardirq_threaded();
 
 		trace_irq_handler_entry(irq, action);
+		haydn_pm_hardirq(irq, false);
 		res = action->handler(irq, action->dev_id);
+		haydn_pm_hardirq(irq, true);
 		trace_irq_handler_exit(irq, action, res);
 
 		if (WARN_ONCE(!irqs_disabled(),"irq %u handler %pS enabled interrupts\n",
