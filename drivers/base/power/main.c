@@ -607,6 +607,21 @@ static const char * const haydn_steps[] = {
 	[0x3f] = "resume completed",
 };
 
+/*
+ * The report line scrolls out of dmesg within a minute on haydn, so keep
+ * it readable at any time: /sys/module/haydn_pm/parameters/last
+ */
+static char haydn_pmtrace_last[512];
+static size_t haydn_pmtrace_len;
+#undef MODULE_PARAM_PREFIX
+#define MODULE_PARAM_PREFIX "haydn_pm."
+module_param_string(last, haydn_pmtrace_last, sizeof(haydn_pmtrace_last), 0444);
+#define HREPORT(fmt, ...) do {						\
+	haydn_pmtrace_len += scnprintf(haydn_pmtrace_last + haydn_pmtrace_len, \
+		sizeof(haydn_pmtrace_last) - haydn_pmtrace_len, fmt, ##__VA_ARGS__); \
+	pr_info(fmt, ##__VA_ARGS__);					\
+} while (0)
+
 static void haydn_pmtrace_report(struct work_struct *w)
 {
 	struct nvmem_device *nv = haydn_sdam_get();
@@ -616,12 +631,12 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	bool found = false;
 
 	if (!nv) {
-		pr_info("haydn-pmtrace: SDAM sdam@7100 not found\n");
+		HREPORT("haydn-pmtrace: SDAM sdam@7100 not found\n");
 		return;
 	}
 	if (nvmem_device_read(nv, HAYDN_SDAM_OFF, sizeof(b), b) != sizeof(b) ||
 	    b[0] != HAYDN_SDAM_MAGIC) {
-		pr_info("haydn-pmtrace: no record from the previous boot (%02x)\n", b[0]);
+		HREPORT("haydn-pmtrace: no record from the previous boot (%02x)\n", b[0]);
 		return;
 	}
 	crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
@@ -634,22 +649,22 @@ static void haydn_pmtrace_report(struct work_struct *w)
 
 		crc &= 0x1fffffffu;
 		if (thread)
-			pr_info("haydn-pmtrace: previous boot ended inside the THREADED handler of IRQ %u: %s (chip %s, hwirq %lu)\n",
+			HREPORT("haydn-pmtrace: previous boot ended inside the THREADED handler of IRQ %u: %s (chip %s, hwirq %lu)\n",
 				crc, desc && desc->action && desc->action->name ?
 				desc->action->name : "?",
 				d && d->chip && d->chip->name ? d->chip->name : "?",
 				d ? d->hwirq : 0);
 		if (after)
-			pr_info("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
+			HREPORT("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
 				crc);
 
-		pr_info("haydn-pmtrace: previous boot ended while re-enabling %s IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
+		HREPORT("haydn-pmtrace: previous boot ended while re-enabling %s IRQ %u on resume: %s (chip %s, hwirq %lu)\n",
 			wake ? "WAKE" : "device", crc, desc && desc->action && desc->action->name ?
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);
 	} else if (b[1] >= 0x20) {
-		pr_info("haydn-pmtrace: previous boot ended after step 0x%02x (%s)\n",
+		HREPORT("haydn-pmtrace: previous boot ended after step 0x%02x (%s)\n",
 			b[1], b[1] < ARRAY_SIZE(haydn_steps) && haydn_steps[b[1]] ?
 			haydn_steps[b[1]] : "?");
 	} else {
@@ -660,7 +675,7 @@ static void haydn_pmtrace_report(struct work_struct *w)
 				break;
 			}
 		}
-		pr_info("haydn-pmtrace: previous boot ended at %s %s%s callback (%s), device %s %s (crc %08x)\n",
+		HREPORT("haydn-pmtrace: previous boot ended at %s %s%s callback (%s), device %s %s (crc %08x)\n",
 			b[1] & 8 ? "after" : "inside",
 			b[1] & 4 ? "resume " : "suspend ",
 			(b[1] & 3) == 2 ? "noirq" : (b[1] & 3) == 1 ? "late/early" : "main",
