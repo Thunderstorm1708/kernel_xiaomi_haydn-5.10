@@ -1421,6 +1421,9 @@ int del_timer_sync(struct timer_list *timer)
 }
 EXPORT_SYMBOL(del_timer_sync);
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_fn(void *fn);
+
 static void call_timer_fn(struct timer_list *timer,
 			  void (*fn)(struct timer_list *),
 			  unsigned long baseclk)
@@ -1447,6 +1450,7 @@ static void call_timer_fn(struct timer_list *timer,
 	lock_map_acquire(&lockdep_map);
 
 	trace_timer_expire_entry(timer, baseclk);
+	haydn_pm_fn(fn);
 	fn(timer);
 	trace_timer_expire_exit(timer);
 

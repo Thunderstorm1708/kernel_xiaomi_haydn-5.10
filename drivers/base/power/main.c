@@ -45,6 +45,8 @@
 #include <linux/wakeup_reason.h>
 
 #include <linux/spmi.h>
+#include <linux/kobject.h>
+#include <asm/sections.h>
 #include <linux/delay.h>
 #include <linux/of_platform.h>
 #include "../base.h"
@@ -568,6 +570,53 @@ static void haydn_sdev_get(void)
 		haydn_sdev = to_spmi_device(pdev->dev.parent);
 }
 
+/*
+ * haydn: #184 died ~1 ms after a hard handler returned that touched no
+ * hardware; what runs then is the softirq work on IRQ exit. Record softirq
+ * vector entry (bit 23) and return (bit 22) the same way.
+ */
+void haydn_pm_softirq(unsigned int vec, bool done)
+{
+	u32 v = vec | (done ? 0x00400000u : 0x00800000u);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x40, v, v >> 8, v >> 16, v >> 24 };
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+
+	if (!READ_ONCE(haydn_pm_resuming) || !sdev)
+		return;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+
+/*
+ * haydn: #184 (no network): the first device IRQ after wakeup returns and
+ * the SoC dies within ~1 ms, whichever IRQ it is. Name the function that
+ * runs then: every timer, hrtimer and tasklet callback during resume.
+ * Code 0x43: offset of a core kernel function from _stext; code 0x44:
+ * crc32 of the module name holding it.
+ */
+void haydn_pm_fn(void *fn)
+{
+	unsigned long a = (unsigned long)fn;
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x43 };
+	u32 v;
+
+	if (!READ_ONCE(haydn_pm_resuming) || !sdev)
+		return;
+	if (core_kernel_text(a)) {
+		v = a - (unsigned long)_stext;
+	} else {
+		struct module *mod;
+
+		preempt_disable();
+		mod = __module_address(a);
+		v = mod ? crc32_le(0, mod->name, strlen(mod->name)) : 0;
+		preempt_enable();
+		buf[1] = 0x44;
+	}
+	buf[2] = v; buf[3] = v >> 8; buf[4] = v >> 16; buf[5] = v >> 24;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+
 void haydn_pm_hardirq(unsigned int irq, bool done)
 {
 	u32 v = irq | (done ? 0x04000000u : 0x02000000u);
@@ -718,6 +767,17 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		bool hdone = crc & 0x04000000u;
 		bool hentry = crc & 0x02000000u;
 		bool late = crc & 0x01000000u;
+		bool sentry = crc & 0x00800000u;
+		bool sdone = crc & 0x00400000u;
+
+		if (sentry || sdone) {
+			unsigned int vec = crc & 0xffu;
+
+			HREPORT("haydn-pmtrace: previous boot ended %s softirq %s (vector %u)\n",
+				sentry ? "INSIDE" : "right after",
+				vec < NR_SOFTIRQS ? softirq_to_name[vec] : "?", vec);
+			goto haydn_done;
+		}
 		unsigned int depth = (crc >> 16) & 0xffu;
 		struct irq_desc *desc;
 		struct irq_data *d;
@@ -760,6 +820,25 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);
+	} else if (b[1] == 0x43) {
+		HREPORT("haydn-pmtrace: previous boot ended in timer/tasklet callback %pS\n",
+			(void *)((unsigned long)_stext + crc));
+	} else if (b[1] == 0x44) {
+		struct kobject *k;
+		const char *mname = NULL;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				mname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: previous boot ended in a timer/tasklet callback of module %s (crc %08x)\n",
+			mname ?: "?", crc);
+		spin_unlock(&module_kset->list_lock);
 	} else if (b[1] == 0x34) {
 		crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
 		if (crc & 0x80000000u)
@@ -789,6 +868,7 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			found ? dev_name(dev) : "?", crc);
 		device_pm_unlock();
 	}
+haydn_done:
 	memset(b, 0, sizeof(b));
 	nvmem_device_write(nv, HAYDN_SDAM_OFF, sizeof(b), b);
 

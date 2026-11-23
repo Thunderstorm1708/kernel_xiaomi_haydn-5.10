@@ -257,6 +257,10 @@ static inline void lockdep_softirq_end(bool in_hardirq) { }
 	deferred;					\
 })
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_softirq(unsigned int vec, bool done);
+void haydn_pm_fn(void *fn);
+
 asmlinkage __visible void __softirq_entry __do_softirq(void)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
@@ -302,7 +306,9 @@ restart:
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
 		trace_softirq_entry(vec_nr);
+		haydn_pm_softirq(vec_nr, false);
 		h->action(h);
+		haydn_pm_softirq(vec_nr, true);
 		trace_softirq_exit(vec_nr);
 		if (unlikely(prev_count != preempt_count())) {
 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",
@@ -565,10 +571,12 @@ static void tasklet_action_common(struct softirq_action *a,
 					BUG();
 				if (t->use_callback) {
 					trace_tasklet_entry(t->callback);
+					haydn_pm_fn(t->callback);
 					t->callback(t);
 					trace_tasklet_exit(t->callback);
 				} else {
 					trace_tasklet_entry(t->func);
+					haydn_pm_fn(t->func);
 					t->func(t->data);
 					trace_tasklet_exit(t->func);
 				}
