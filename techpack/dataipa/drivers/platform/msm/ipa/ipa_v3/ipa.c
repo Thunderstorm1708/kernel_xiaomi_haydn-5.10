@@ -499,6 +499,7 @@ static struct notifier_block ipa_pm_notifier = {
 };
 
 static int ipa3_ap_resume_noirq(struct device *dev);
+static int ipa3_ap_suspend_noirq(struct device *dev);
 
 static const struct dev_pm_ops ipa_pm_ops = {
 	.suspend_late = ipa3_ap_suspend,
@@ -507,6 +508,7 @@ static const struct dev_pm_ops ipa_pm_ops = {
 #endif
 	.resume_early = ipa3_ap_resume,
 	.restore_early = ipa3_ap_resume,
+	.suspend_noirq = ipa3_ap_suspend_noirq,
 	.resume_noirq = ipa3_ap_resume_noirq,
 };
 
@@ -9746,10 +9748,20 @@ int ipa3_ap_resume(struct device *dev)
  * GSI access without them is a NoC error (see ipa3_disable_clks()).
  * Re-send all IPA votes in resume_noirq, which runs before any device IRQ
  * is re-enabled, so the GSI handler never touches an unpowered block.
- * haydn_ipa_revote=0 turns it off.
+ * #176: did not stop the reset, so off by default (haydn_ipa_revote=1).
  */
-static bool haydn_ipa_revote = true;
+static bool haydn_ipa_revote;
 module_param(haydn_ipa_revote, bool, 0644);
+
+void gsi_haydn_hold(void);
+
+/* haydn: GSI/IPA hard IRQs defer their work from here to PM_POST_SUSPEND */
+static int ipa3_ap_suspend_noirq(struct device *dev)
+{
+	if (of_device_is_compatible(dev->of_node, "qcom,ipa"))
+		gsi_haydn_hold();
+	return 0;
+}
 
 static int ipa3_ap_resume_noirq(struct device *dev)
 {

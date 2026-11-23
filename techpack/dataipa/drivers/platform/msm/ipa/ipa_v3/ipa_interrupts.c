@@ -3,6 +3,7 @@
  * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  */
 
+#include <linux/suspend.h>
 #include <linux/interrupt.h>
 #include "ipa_i.h"
 
@@ -334,9 +335,37 @@ static void ipa3_interrupt_defer(struct work_struct *work)
 	IPADBG("Done\n");
 }
 
+/*
+ * haydn: see gsi_isr(). Between suspend_noirq and PM_POST_SUSPEND do not
+ * touch IPA registers in the hard IRQ; queue the existing deferred work
+ * once resume is complete instead (the IRQ status stays latched in IPA).
+ */
+bool gsi_haydn_held(void);
+static bool haydn_ipa_isr_deferred;
+
+static int haydn_ipa_pm_notify(struct notifier_block *nb, unsigned long action,
+			       void *data)
+{
+	if (action == PM_POST_SUSPEND && READ_ONCE(haydn_ipa_isr_deferred)) {
+		WRITE_ONCE(haydn_ipa_isr_deferred, false);
+		pr_info("haydn-ipa: IPA interrupt deferred to after resume\n");
+		queue_work(ipa3_ctx->power_mgmt_wq, &ipa3_interrupt_defer_work);
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_ipa_pm_nb = {
+	.notifier_call = haydn_ipa_pm_notify,
+};
+
 static irqreturn_t ipa3_isr(int irq, void *ctxt)
 {
 	struct ipa_active_client_logging_info log_info;
+
+	if (gsi_haydn_held()) {
+		WRITE_ONCE(haydn_ipa_isr_deferred, true);
+		return IRQ_HANDLED;
+	}
 
 	IPA_ACTIVE_CLIENTS_PREP_SIMPLE(log_info);
 	IPADBG_LOW("Enter\n");
@@ -540,6 +569,14 @@ int ipa3_interrupts_init(u32 ipa_irq, u32 ee, struct device *ipa_dev)
 			IPADBG("IPA IRQ wakeup enabled irq=%d\n", ipa_irq);
 	}
 	spin_lock_init(&suspend_wa_lock);
+	{
+		static bool haydn_nb_done;
+
+		if (!haydn_nb_done) {
+			haydn_nb_done = true;
+			register_pm_notifier(&haydn_ipa_pm_nb);
+		}
+	}
 	return 0;
 }
 

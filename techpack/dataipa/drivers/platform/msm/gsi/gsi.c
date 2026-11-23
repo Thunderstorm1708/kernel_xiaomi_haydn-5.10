@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/suspend.h>
 #include <linux/of.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -843,8 +844,62 @@ static void gsi_handle_irq(void)
 	}
 }
 
+/*
+ * haydn: on 5.10 the SoC resets on resume right after device IRQs come back
+ * (PMIC breadcrumb #174/#176), next to the GSI wake IRQ. From the
+ * suspend_noirq phase until PM_POST_SUSPEND, do not touch GSI registers in
+ * the hard IRQ: mask the (level) IRQ and re-enable it once resume is
+ * complete, when it fires again and is handled normally. The IRQ still
+ * wakes the system; only its handling moves to after resume.
+ */
+static bool haydn_gsi_defer = true;
+module_param(haydn_gsi_defer, bool, 0644);
+static atomic_t haydn_gsi_hold = ATOMIC_INIT(0);
+static bool haydn_gsi_parked;
+static unsigned int haydn_gsi_deferred;
+
+bool gsi_haydn_held(void)
+{
+	return atomic_read(&haydn_gsi_hold);
+}
+EXPORT_SYMBOL(gsi_haydn_held);
+
+void gsi_haydn_hold(void)
+{
+	if (READ_ONCE(haydn_gsi_defer))
+		atomic_set(&haydn_gsi_hold, 1);
+}
+EXPORT_SYMBOL(gsi_haydn_hold);
+
+static int haydn_gsi_pm_notify(struct notifier_block *nb, unsigned long action,
+			       void *data)
+{
+	if (action != PM_POST_SUSPEND)
+		return NOTIFY_DONE;
+	atomic_set(&haydn_gsi_hold, 0);
+	if (haydn_gsi_parked && gsi_ctx) {
+		haydn_gsi_parked = false;
+		pr_info("haydn-gsi: %u GSI interrupt(s) deferred to after resume\n",
+			haydn_gsi_deferred);
+		enable_irq(gsi_ctx->per.irq);
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_gsi_pm_nb = {
+	.notifier_call = haydn_gsi_pm_notify,
+};
+
 static irqreturn_t gsi_isr(int irq, void *ctxt)
 {
+	if (atomic_read(&haydn_gsi_hold)) {
+		haydn_gsi_deferred++;
+		if (!haydn_gsi_parked) {
+			haydn_gsi_parked = true;
+			disable_irq_nosync(irq);
+		}
+		return IRQ_HANDLED;
+	}
 	if (gsi_ctx->per.req_clk_cb) {
 		bool granted = false;
 
@@ -5241,6 +5296,7 @@ static int msm_gsi_probe(struct platform_device *pdev)
 	gsi_ctx->dev = dev;
 	init_completion(&gsi_ctx->gen_ee_cmd_compl);
 	gsi_debugfs_init();
+	register_pm_notifier(&haydn_gsi_pm_nb);
 
 	return 0;
 }
