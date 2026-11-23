@@ -218,9 +218,26 @@ static void resume_irqs(bool want_early)
 			      irqd_is_wakeup_armed(&desc->irq_data)))
 			haydn_pm_irq(irq | (irqd_is_wakeup_armed(&desc->irq_data) ?
 					    0x80000000u : 0));
-		raw_spin_lock_irqsave(&desc->lock, flags);
+		/*
+		 * haydn: #172 proved the records reliable (a good resume reaches
+		 * step 0x3f) and the hang lies between "before IRQ 38" and
+		 * "IRQ 38 + 50 us". Split that window: bit 28 = the descriptor
+		 * lock was busy, bit 27 = resume_irq() returned (depth in bits
+		 * 16-23), bit 30 = 50 us later.
+		 */
+		if (haydn && irq == 38) {
+			if (!raw_spin_trylock_irqsave(&desc->lock, flags)) {
+				haydn_pm_irq(irq | 0x10000000u);
+				raw_spin_lock_irqsave(&desc->lock, flags);
+			}
+		} else {
+			raw_spin_lock_irqsave(&desc->lock, flags);
+		}
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
+		if (haydn && irq == 38)
+			haydn_pm_irq(irq | 0x08000000u |
+				     ((desc->depth & 0xffu) << 16));
 		if (haydn && ((desc->istate & IRQS_SUSPENDED) ||
 			      irq == 38)) {
 			udelay(50);

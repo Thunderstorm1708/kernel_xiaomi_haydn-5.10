@@ -644,10 +644,21 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		bool wake = crc & 0x80000000u;
 		bool after = crc & 0x40000000u;
 		bool thread = crc & 0x20000000u;
-		struct irq_desc *desc = irq_to_desc(crc & 0x1fffffffu);
-		struct irq_data *d = desc ? irq_desc_get_irq_data(desc) : NULL;
+		bool busy = crc & 0x10000000u;
+		bool unlocked = crc & 0x08000000u;
+		unsigned int depth = (crc >> 16) & 0xffu;
+		struct irq_desc *desc;
+		struct irq_data *d;
 
-		crc &= 0x1fffffffu;
+		crc &= (busy || unlocked) ? 0xffffu : 0x07ffffffu;
+		desc = irq_to_desc(crc);
+		d = desc ? irq_desc_get_irq_data(desc) : NULL;
+		if (busy)
+			HREPORT("haydn-pmtrace: IRQ %u: its lock was HELD by someone else on resume; hung waiting for it\n",
+				crc);
+		if (unlocked)
+			HREPORT("haydn-pmtrace: IRQ %u: resume_irq() returned (depth %u, %s); died within the next 50 us (an interrupt in that window)\n",
+				crc, depth, depth ? "still masked" : "UNMASKED");
 		if (thread)
 			HREPORT("haydn-pmtrace: previous boot ended inside the THREADED handler of IRQ %u: %s (chip %s, hwirq %lu)\n",
 				crc, desc && desc->action && desc->action->name ?
