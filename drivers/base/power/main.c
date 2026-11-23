@@ -45,6 +45,7 @@
 #include <linux/wakeup_reason.h>
 
 #include <linux/spmi.h>
+#include <linux/delay.h>
 #include <linux/of_platform.h>
 #include "../base.h"
 #include "power.h"
@@ -621,6 +622,27 @@ void haydn_pm_irq_thread(unsigned int irq)
 		haydn_sdam_put(0x40, irq | 0x20000000u);
 }
 
+/*
+ * haydn: is the reset tied to the resume_irqs() position (always "IRQ 38")
+ * or to the time since wakeup? With haydn_irq_delay_ms=N, pause N ms right
+ * before device IRQs come back, with a record every 10 ms (code 0x34).
+ */
+static unsigned int haydn_irq_delay_ms;
+core_param(haydn_irq_delay_ms, haydn_irq_delay_ms, uint, 0644);
+
+void haydn_pm_irq_delay(void)
+{
+	unsigned int ms = READ_ONCE(haydn_irq_delay_ms), t;
+
+	if (!ms || !READ_ONCE(haydn_pm_sdam))
+		return;
+	for (t = 0; t < ms; t += 10) {
+		haydn_sdam_put(0x34, t);
+		mdelay(10);
+	}
+	haydn_sdam_put(0x34, ms | 0x80000000u);
+}
+
 /* kernel/irq/pm.c: about to re-enable this device IRQ on resume */
 void haydn_pm_irq(unsigned int irq)
 {
@@ -731,6 +753,14 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);
+	} else if (b[1] == 0x34) {
+		crc = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
+		if (crc & 0x80000000u)
+			HREPORT("haydn-pmtrace: the %u ms pause before device IRQs FINISHED; nothing after it was recorded\n",
+				crc & 0xffffu);
+		else
+			HREPORT("haydn-pmtrace: previous boot DIED %u-%u ms INTO the pause before device IRQs (time-based, not IRQ-based)\n",
+				crc, crc + 10);
 	} else if (b[1] >= 0x20) {
 		HREPORT("haydn-pmtrace: previous boot ended after step 0x%02x (%s)\n",
 			b[1], b[1] < ARRAY_SIZE(haydn_steps) && haydn_steps[b[1]] ?
@@ -751,6 +781,28 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			found ? dev_driver_string(dev) : "?",
 			found ? dev_name(dev) : "?", crc);
 		device_pm_unlock();
+	}
+	memset(b, 0, sizeof(b));
+	nvmem_device_write(nv, HAYDN_SDAM_OFF, sizeof(b), b);
+
+	/* self-test of the hard IRQ path: direct SPMI write with IRQs off */
+	haydn_sdev_get();
+	if (haydn_sdev) {
+		static const u8 t[6] = { HAYDN_SDAM_MAGIC, 0x41, 0x11, 0x22, 0x33, 0x44 };
+		unsigned long flags;
+		int rc;
+
+		local_irq_save(flags);
+		rc = spmi_ext_register_writel(haydn_sdev, 0x7100 + HAYDN_SDAM_OFF,
+					      t, sizeof(t));
+		local_irq_restore(flags);
+		if (!rc && nvmem_device_read(nv, HAYDN_SDAM_OFF, sizeof(b), b) == sizeof(b) &&
+		    !memcmp(b, t, sizeof(t)))
+			HREPORT("haydn-pmtrace: hard-IRQ record path self-test OK\n");
+		else
+			HREPORT("haydn-pmtrace: hard-IRQ record path self-test FAILED (rc %d)\n", rc);
+	} else {
+		HREPORT("haydn-pmtrace: hard-IRQ record path NOT available (no spmi device)\n");
 	}
 	memset(b, 0, sizeof(b));
 	nvmem_device_write(nv, HAYDN_SDAM_OFF, sizeof(b), b);

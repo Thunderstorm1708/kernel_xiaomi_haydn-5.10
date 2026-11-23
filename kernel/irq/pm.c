@@ -184,6 +184,7 @@ resume:
 
 /* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
 void haydn_pm_irq(unsigned int irq);
+void haydn_pm_irq_delay(void);
 bool haydn_pm_irq_wanted(void);
 
 static void resume_irqs(bool want_early)
@@ -191,6 +192,9 @@ static void resume_irqs(bool want_early)
 	bool haydn = !want_early && haydn_pm_irq_wanted();
 	struct irq_desc *desc;
 	int irq;
+
+	if (haydn)
+		haydn_pm_irq_delay();
 
 	for_each_irq_desc(irq, desc) {
 		unsigned long flags;
