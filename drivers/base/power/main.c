@@ -767,6 +767,9 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		bool hdone = crc & 0x04000000u;
 		bool hentry = crc & 0x02000000u;
 		bool late = crc & 0x01000000u;
+		unsigned int depth;
+		struct irq_desc *desc;
+		struct irq_data *d;
 		bool sentry = crc & 0x00800000u;
 		bool sdone = crc & 0x00400000u;
 
@@ -778,10 +781,7 @@ static void haydn_pmtrace_report(struct work_struct *w)
 				vec < NR_SOFTIRQS ? softirq_to_name[vec] : "?", vec);
 			goto haydn_done;
 		}
-		unsigned int depth = (crc >> 16) & 0xffu;
-		struct irq_desc *desc;
-		struct irq_data *d;
-
+		depth = (crc >> 16) & 0xffu;
 		crc &= 0xffffu;
 		desc = irq_to_desc(crc);
 		d = desc ? irq_desc_get_irq_data(desc) : NULL;
