@@ -617,6 +617,33 @@ void haydn_pm_fn(void *fn)
 	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
 }
 
+/*
+ * haydn: APSS watchdog bark (the SoC froze for ~11 s): record where the CPU
+ * that took the bark was interrupted. Code 0x46 = offset of a core kernel
+ * PC from _stext, 0x47 = crc32 of the module holding it.
+ */
+void haydn_pm_bark(struct pt_regs *regs)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	unsigned long pc;
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x46 };
+	u32 v;
+
+	if (!sdev)
+		return;
+	pc = regs ? instruction_pointer(regs) : 0;
+	if (pc && core_kernel_text(pc)) {
+		v = pc - (unsigned long)_stext;
+	} else {
+		struct module *mod = pc ? __module_address(pc) : NULL;
+
+		v = mod ? crc32_le(0, mod->name, strlen(mod->name)) : 0;
+		buf[1] = 0x47;
+	}
+	buf[2] = v; buf[3] = v >> 8; buf[4] = v >> 16; buf[5] = v >> 24;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+
 void haydn_pm_hardirq(unsigned int irq, bool done)
 {
 	u32 v = irq | (done ? 0x04000000u : 0x02000000u);
@@ -820,6 +847,25 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);
+	} else if (b[1] == 0x46) {
+		HREPORT("haydn-pmtrace: WATCHDOG BARK (SoC froze): CPU was stuck at %pS\n",
+			(void *)((unsigned long)_stext + crc));
+	} else if (b[1] == 0x47) {
+		struct kobject *k;
+		const char *mname = NULL;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				mname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: WATCHDOG BARK (SoC froze): CPU was stuck in module %s (crc %08x)\n",
+			mname ?: "?", crc);
+		spin_unlock(&module_kset->list_lock);
 	} else if (b[1] == 0x43) {
 		HREPORT("haydn-pmtrace: previous boot ended in timer/tasklet callback %pS\n",
 			(void *)((unsigned long)_stext + crc));

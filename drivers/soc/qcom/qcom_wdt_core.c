@@ -32,6 +32,7 @@
 #include <linux/kdebug.h>
 #include <linux/suspend.h>
 #include <linux/notifier.h>
+#include <asm/irq_regs.h>
 
 #define MASK_SIZE        32
 #define COMPARE_RET      -1
@@ -806,6 +807,9 @@ void qcom_wdt_trigger_bite(void)
 }
 EXPORT_SYMBOL(qcom_wdt_trigger_bite);
 
+/* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
+void haydn_pm_bark(struct pt_regs *regs);
+
 static irqreturn_t qcom_wdt_bark_handler(int irq, void *dev_id)
 {
 	struct msm_watchdog_data *wdog_dd = dev_id;
@@ -825,6 +829,7 @@ static irqreturn_t qcom_wdt_bark_handler(int irq, void *dev_id)
 	if (wdog_dd->freeze_in_progress)
 		dev_info(wdog_dd->dev, "Suspend in progress\n");
 
+	haydn_pm_bark(get_irq_regs());
 	qcom_wdt_trigger_bite();
 
 	return IRQ_HANDLED;

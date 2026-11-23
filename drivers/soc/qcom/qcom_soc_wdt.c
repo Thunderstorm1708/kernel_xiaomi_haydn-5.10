@@ -10,6 +10,7 @@
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/io.h>
+#include <linux/of.h>
 
 #define WDT0_RST                0x04
 #define WDT0_EN                 0x08
@@ -129,8 +130,35 @@ static struct platform_driver qcom_soc_wdt_driver = {
 	},
 };
 
+/*
+ * haydn: the bootloader sets the APSS watchdog node to status = "disabled",
+ * so on 5.10 nothing catches the SoC freeze after suspend (the phone stays
+ * black until a long power-key press). Re-enable the node before platform
+ * devices are created; the bark handler then records where the CPU was.
+ */
+static struct property haydn_wdt_okay = {
+	.name = "status",
+	.value = "okay",
+	.length = sizeof("okay"),
+};
+
+static void __init haydn_wdt_force_enable(void)
+{
+	struct device_node *np;
+
+	np = of_find_compatible_node(NULL, NULL, "qcom,msm-watchdog");
+	if (!np)
+		return;
+	if (!of_device_is_available(np)) {
+		of_update_property(np, &haydn_wdt_okay);
+		pr_info("haydn: APSS watchdog re-enabled (bootloader disabled it)\n");
+	}
+	of_node_put(np);
+}
+
 static int __init init_watchdog(void)
 {
+	haydn_wdt_force_enable();
 	return platform_driver_register(&qcom_soc_wdt_driver);
 }
 
