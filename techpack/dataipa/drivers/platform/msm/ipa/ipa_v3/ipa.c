@@ -498,6 +498,8 @@ static struct notifier_block ipa_pm_notifier = {
 	.notifier_call = ipa_pm_notify,
 };
 
+static int ipa3_ap_resume_noirq(struct device *dev);
+
 static const struct dev_pm_ops ipa_pm_ops = {
 	.suspend_late = ipa3_ap_suspend,
 #if IS_ENABLED(CONFIG_HIBERNATION)
@@ -505,6 +507,7 @@ static const struct dev_pm_ops ipa_pm_ops = {
 #endif
 	.resume_early = ipa3_ap_resume,
 	.restore_early = ipa3_ap_resume,
+	.resume_noirq = ipa3_ap_resume_noirq,
 };
 
 static struct platform_driver ipa_plat_drv = {
@@ -9731,6 +9734,52 @@ int ipa3_ap_freeze(struct device *dev)
  */
 int ipa3_ap_resume(struct device *dev)
 {
+	return 0;
+}
+
+/*
+ * haydn: on 5.10 the SoC resets on resume a few microseconds after device
+ * IRQs come back (PMIC breadcrumb, #174), right after the GSI wake IRQ
+ * (IRQ 37) is replayed. gsi_isr() reads GSI registers whenever
+ * ipa_clk_vote is set, but after deep sleep the IPA clock (RPMh BCM IP0)
+ * and the IPA bus votes (incl. appss_to_ipa) are not reliably back, and a
+ * GSI access without them is a NoC error (see ipa3_disable_clks()).
+ * Re-send all IPA votes in resume_noirq, which runs before any device IRQ
+ * is re-enabled, so the GSI handler never touches an unpowered block.
+ * haydn_ipa_revote=0 turns it off.
+ */
+static bool haydn_ipa_revote = true;
+module_param(haydn_ipa_revote, bool, 0644);
+
+static int ipa3_ap_resume_noirq(struct device *dev)
+{
+	unsigned int idx;
+	int i;
+
+	if (!READ_ONCE(haydn_ipa_revote) || !ipa3_ctx ||
+	    !of_device_is_compatible(dev->of_node, "qcom,ipa") ||
+	    ipa3_ctx->ipa3_hw_mode != IPA_HW_MODE_NORMAL ||
+	    !atomic_read(&ipa3_ctx->ipa_clk_vote))
+		return 0;
+
+	idx = ipa3_get_bus_vote();
+	for (i = 0; i < ipa3_ctx->icc_num_paths; i++) {
+		if (!ipa3_ctx->ctrl->icc_path[i])
+			continue;
+		icc_set_bw(ipa3_ctx->ctrl->icc_path[i], 0, 0);
+		if (icc_set_bw(ipa3_ctx->ctrl->icc_path[i],
+			       ipa3_ctx->icc_clk[idx][i][IPA_ICC_AB],
+			       ipa3_ctx->icc_clk[idx][i][IPA_ICC_IB]))
+			IPAERR("haydn: path %d re-vote failed\n", i);
+	}
+	if (ipa3_clk) {
+		clk_disable(ipa3_clk);
+		clk_unprepare(ipa3_clk);
+		if (clk_prepare_enable(ipa3_clk))
+			IPAERR("haydn: IPA clock re-vote failed\n");
+		else
+			clk_set_rate(ipa3_clk, ipa3_ctx->curr_ipa_clk_rate);
+	}
 	return 0;
 }
 
