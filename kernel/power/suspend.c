@@ -36,6 +36,7 @@
 
 /* haydn: PMIC SDAM breadcrumb, drivers/base/power/main.c */
 void haydn_pm_stage(u8 code);
+void haydn_release_held_irqs(void);
 
 const char * const pm_labels[] = {
 	[PM_SUSPEND_TO_IDLE] = "freeze",
@@ -537,6 +538,7 @@ int suspend_devices_and_enter(suspend_state_t state)
  Resume_devices:
 	suspend_test_start();
 	dpm_resume_end(PMSG_RESUME);
+	haydn_release_held_irqs();
 	haydn_pm_stage(0x3f);
 	suspend_test_finish("resume devices");
 	trace_suspend_resume(TPS("resume_console"), state, true);

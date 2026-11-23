@@ -717,13 +717,20 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		bool unlocked = crc & 0x08000000u;
 		bool hdone = crc & 0x04000000u;
 		bool hentry = crc & 0x02000000u;
+		bool late = crc & 0x01000000u;
 		unsigned int depth = (crc >> 16) & 0xffu;
 		struct irq_desc *desc;
 		struct irq_data *d;
 
-		crc &= (busy || unlocked || hdone || hentry) ? 0xffffu : 0x01ffffffu;
+		crc &= 0xffffu;
 		desc = irq_to_desc(crc);
 		d = desc ? irq_desc_get_irq_data(desc) : NULL;
+		if (late && after)
+			HREPORT("haydn-pmtrace: held IRQ %u was released and 1 ms passed; the next one was never reached\n",
+				crc);
+		else if (late)
+			HREPORT("haydn-pmtrace: previous boot DIED right after RELEASING held IRQ %u (its unmask kills the SoC)\n",
+				crc);
 		if (hentry)
 			HREPORT("haydn-pmtrace: previous boot ended INSIDE the hard IRQ handler of IRQ %u (it never returned)\n",
 				crc);
@@ -742,12 +749,12 @@ static void haydn_pmtrace_report(struct work_struct *w)
 				desc->action->name : "?",
 				d && d->chip && d->chip->name ? d->chip->name : "?",
 				d ? d->hwirq : 0);
-		if (after)
+		if (after && !late)
 			HREPORT("haydn-pmtrace: IRQ %u was re-enabled and 50 us passed; the next IRQ was never reached\n",
 				crc);
 
 		HREPORT("haydn-pmtrace: %s %s IRQ %u: %s (chip %s, hwirq %lu)\n",
-			(hentry || hdone) ? "that is" :
+			(hentry || hdone || late) ? "that is" :
 			"previous boot ended while re-enabling",
 			wake ? "WAKE" : "device", crc, desc && desc->action && desc->action->name ?
 			desc->action->name : "?",

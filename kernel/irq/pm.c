@@ -7,6 +7,7 @@
 
 #include <linux/irq.h>
 #include <linux/delay.h>
+#include <linux/moduleparam.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/suspend.h>
@@ -187,6 +188,39 @@ void haydn_pm_irq(unsigned int irq);
 void haydn_pm_irq_delay(void);
 bool haydn_pm_irq_wanted(void);
 
+/*
+ * haydn: #182 showed the reset is tied to device IRQs coming back (a 300 ms
+ * pause before them changes nothing, no hard handler runs in the window).
+ * With haydn_irq_hold_max=N, suspended IRQs <= N are left masked by
+ * resume_irqs() and released one by one, 1 ms apart, after all devices
+ * resumed (before step 0x3f). Breadcrumb bit 24 = released late; with bit 30
+ * the 1 ms after it passed. The last record names the IRQ whose unmask kills
+ * the SoC. Can be changed at runtime to bisect.
+ */
+static unsigned int haydn_irq_hold_max;
+core_param(haydn_irq_hold_max, haydn_irq_hold_max, uint, 0644);
+static DECLARE_BITMAP(haydn_held, 64);
+
+void haydn_release_held_irqs(void)
+{
+	unsigned int irq;
+
+	for_each_set_bit(irq, haydn_held, 64) {
+		struct irq_desc *desc = irq_to_desc(irq);
+		unsigned long flags;
+
+		clear_bit(irq, haydn_held);
+		if (!desc)
+			continue;
+		haydn_pm_irq(irq | 0x01000000u);
+		raw_spin_lock_irqsave(&desc->lock, flags);
+		resume_irq(desc);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
+		mdelay(1);
+		haydn_pm_irq(irq | 0x01000000u | 0x40000000u);
+	}
+}
+
 static void resume_irqs(bool want_early)
 {
 	bool haydn = !want_early && haydn_pm_irq_wanted();
@@ -205,6 +239,11 @@ static void resume_irqs(bool want_early)
 			continue;
 		if (irq_settings_is_nested_thread(desc))
 			continue;
+		if (haydn && irq < 64 && irq <= READ_ONCE(haydn_irq_hold_max) &&
+		    (desc->istate & IRQS_SUSPENDED)) {
+			set_bit(irq, haydn_held);
+			continue;
+		}
 
 		/*
 		 * haydn: the resume hang comes right after the last noirq
