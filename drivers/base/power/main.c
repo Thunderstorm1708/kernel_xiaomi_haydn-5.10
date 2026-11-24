@@ -46,6 +46,9 @@
 
 #include <linux/spmi.h>
 #include <linux/kdebug.h>
+#include <linux/stacktrace.h>
+#include <linux/sched/debug.h>
+#include <asm/irq_regs.h>
 #include <linux/kobject.h>
 #include <asm/sections.h>
 #include <linux/delay.h>
@@ -628,17 +631,47 @@ void haydn_pm_fn(void *fn)
  */
 static bool haydn_died;
 
-void haydn_pm_dpm_timeout(struct device *dev)
+/*
+ * haydn: #195 named the stuck device (1d84000.ufshc). Now record where its
+ * suspend/resume task is: if it sleeps, the first non-scheduler frame of its
+ * stack (what it waits for); if it runs on a CPU, the PC interrupted by an IPI.
+ * Codes 0x4c/0x4d (sleeping: core offset / module crc), 0x4e/0x4f (running).
+ */
+static void haydn_put_pc(unsigned long pc, u8 core_code);
+
+static void haydn_dpm_ipi(void *unused)
+{
+	struct pt_regs *regs = get_irq_regs();
+
+	haydn_put_pc(regs ? instruction_pointer(regs) : 0, 0x4e);
+}
+
+void haydn_pm_dpm_timeout(struct device *dev, struct task_struct *tsk)
 {
 	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
 	const char *n = dev_name(dev);
 	u32 v = crc32_le(0, n, strlen(n));
 	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x4b, v, v >> 8, v >> 16, v >> 24 };
+	unsigned long entries[16];
+	unsigned int nr, i;
 
 	WRITE_ONCE(haydn_pm_resuming, false);
-	if (sdev)
-		spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf,
-					 sizeof(buf));
+	if (!sdev)
+		return;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+	if (!tsk)
+		return;
+	if (task_curr(tsk)) {
+		smp_call_function_single(task_cpu(tsk), haydn_dpm_ipi, NULL, 0);
+		return;
+	}
+	nr = stack_trace_save_tsk(tsk, entries, ARRAY_SIZE(entries), 0);
+	for (i = 0; i < nr; i++) {
+		if (in_sched_functions(entries[i]))
+			continue;
+		haydn_put_pc(entries[i], 0x4c);
+		return;
+	}
 }
 
 static void haydn_put_pc(unsigned long pc, u8 core_code)
@@ -924,6 +957,44 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS in module %s (crc %08x)\n",
 			mname ?: "?", crc);
 		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x4c) {
+		HREPORT("haydn-pmtrace: stuck UFS/device PM task was WAITING in %pS\n",
+			(void *)((unsigned long)_stext + crc));
+	} else if (b[1] == 0x4d) {
+		struct kobject *k;
+		const char *mname = NULL;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				mname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: stuck UFS/device PM task was WAITING in module %s (crc %08x)\n",
+			mname ?: "?", crc);
+		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x4e) {
+		HREPORT("haydn-pmtrace: stuck UFS/device PM task was RUNNING at %pS\n",
+			(void *)((unsigned long)_stext + crc));
+	} else if (b[1] == 0x4f) {
+		struct kobject *k;
+		const char *mname = NULL;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				mname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: stuck UFS/device PM task was RUNNING at module %s (crc %08x)\n",
+			mname ?: "?", crc);
+		spin_unlock(&module_kset->list_lock);
 	} else if (b[1] == 0x4b) {
 		struct kobject *k;
 		const char *dname = NULL;
@@ -1099,7 +1170,7 @@ struct dpm_watchdog {
  * There's not much we can do here to recover so panic() to
  * capture a crash-dump in pstore.
  */
-void haydn_pm_dpm_timeout(struct device *dev);
+void haydn_pm_dpm_timeout(struct device *dev, struct task_struct *tsk);
 
 static void dpm_watchdog_handler(struct timer_list *t)
 {
@@ -1111,7 +1182,7 @@ static void dpm_watchdog_handler(struct timer_list *t)
 	 * it in the PMIC breadcrumb (code 0x4b, crc32 of dev_name) and print
 	 * its stack instead of panicking, so dmesg shows where it is stuck.
 	 */
-	haydn_pm_dpm_timeout(wd->dev);
+	haydn_pm_dpm_timeout(wd->dev, wd->tsk);
 	dev_emerg(wd->dev, "**** DPM device timeout **** driver %s\n",
 		  dev_driver_string(wd->dev));
 	show_stack(wd->tsk, NULL, KERN_EMERG);
