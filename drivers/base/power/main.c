@@ -632,6 +632,66 @@ void haydn_pm_fn(void *fn)
 static bool haydn_died;
 
 /*
+ * haydn: with UFS out of the way the SoC dies right after IPA's IRQ (36,
+ * "ipa") is re-enabled, as in the clean #174-#182 runs. Park the "ipa" and
+ * "gsi" IRQs from PM_SUSPEND_PREPARE and re-enable them 2 s after
+ * PM_POST_SUSPEND, recording code 0x50 + irq before each enable and 0x51
+ * + irq 50 ms after. haydn_park_ipa=0 turns it off.
+ */
+static bool haydn_park_ipa = true;
+core_param(haydn_park_ipa, haydn_park_ipa, bool, 0644);
+static unsigned int haydn_parked[2];
+static unsigned int haydn_nparked;
+
+static void haydn_sdam_put(u8 code, u32 val);
+
+static void haydn_unpark_fn(struct work_struct *w)
+{
+	unsigned int i;
+
+	for (i = 0; i < haydn_nparked; i++) {
+		haydn_sdam_put(0x50, haydn_parked[i]);
+		enable_irq(haydn_parked[i]);
+		msleep(50);
+		haydn_sdam_put(0x51, haydn_parked[i]);
+	}
+	haydn_nparked = 0;
+}
+static DECLARE_DELAYED_WORK(haydn_unpark_work, haydn_unpark_fn);
+
+static int haydn_park_notify(struct notifier_block *nb, unsigned long action,
+			     void *data)
+{
+	struct irq_desc *desc;
+	unsigned int irq;
+
+	if (action == PM_SUSPEND_PREPARE) {
+		cancel_delayed_work_sync(&haydn_unpark_work);
+		if (haydn_nparked)
+			haydn_unpark_fn(NULL);
+		if (!READ_ONCE(haydn_park_ipa))
+			return NOTIFY_DONE;
+		for_each_irq_desc(irq, desc) {
+			const char *n = desc->action ? desc->action->name : NULL;
+
+			if (!n || (strcmp(n, "ipa") && strcmp(n, "gsi")))
+				continue;
+			if (haydn_nparked >= ARRAY_SIZE(haydn_parked))
+				break;
+			disable_irq(irq);
+			haydn_parked[haydn_nparked++] = irq;
+		}
+	} else if (action == PM_POST_SUSPEND && haydn_nparked) {
+		schedule_delayed_work(&haydn_unpark_work, 2 * HZ);
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_park_nb = {
+	.notifier_call = haydn_park_notify,
+};
+
+/*
  * haydn: #195 named the stuck device (1d84000.ufshc). Now record where its
  * suspend/resume task is: if it sleeps, the first non-scheduler frame of its
  * stack (what it waits for); if it runs on a CPU, the PC interrupted by an IPI.
@@ -995,6 +1055,18 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		HREPORT("haydn-pmtrace: stuck UFS/device PM task was RUNNING at module %s (crc %08x)\n",
 			mname ?: "?", crc);
 		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x50 || b[1] == 0x51) {
+		struct irq_desc *pd = irq_to_desc(crc & 0xffffu);
+
+		const char *pn = pd && pd->action && pd->action->name ?
+				 pd->action->name : "?";
+
+		if (b[1] == 0x50)
+			HREPORT("haydn-pmtrace: previous boot DIED re-enabling parked IRQ %u (%s) 2 s after resume\n",
+				crc & 0xffffu, pn);
+		else
+			HREPORT("haydn-pmtrace: parked IRQ %u (%s) re-enabled after resume, alive 50 ms later; died later\n",
+				crc & 0xffffu, pn);
 	} else if (b[1] == 0x4b) {
 		struct kobject *k;
 		const char *dname = NULL;
@@ -1094,6 +1166,7 @@ static int __init haydn_pmtrace_init(void)
 {
 	schedule_delayed_work(&haydn_pmtrace_work, 20 * HZ);
 	register_die_notifier(&haydn_die_nb);
+	register_pm_notifier(&haydn_park_nb);
 	atomic_notifier_chain_register(&panic_notifier_list, &haydn_panic_nb);
 	return 0;
 }
