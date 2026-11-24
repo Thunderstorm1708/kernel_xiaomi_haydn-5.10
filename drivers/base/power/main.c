@@ -668,11 +668,37 @@ void haydn_pm_ipa_mark(u8 step, u32 val)
 }
 EXPORT_SYMBOL(haydn_pm_ipa_mark);
 
+/*
+ * haydn diag #203: the SoC died right at enable_irq(36) 2 s after resume,
+ * before ipa3_isr() was entered. Keep IPA's own IRQ ("ipa") disabled for good
+ * after the first suspend (GSI, which carries the data path, is still
+ * re-enabled). haydn_unpark_ipa=1 restores the old behaviour.
+ */
+static bool haydn_unpark_ipa;
+core_param(haydn_unpark_ipa, haydn_unpark_ipa, bool, 0644);
+static int haydn_ipa_kept = -1;
+
+static bool haydn_irq_is(unsigned int irq, const char *name)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+
+	return desc && desc->action && desc->action->name &&
+	       !strcmp(desc->action->name, name);
+}
+
 static void haydn_unpark_fn(struct work_struct *w)
 {
 	unsigned int i;
 
 	for (i = 0; i < haydn_nparked; i++) {
+		if (!READ_ONCE(haydn_unpark_ipa) &&
+		    haydn_irq_is(haydn_parked[i], "ipa")) {
+			if (haydn_ipa_kept < 0)
+				pr_info("haydn: IPA IRQ %u stays disabled after suspend\n",
+					haydn_parked[i]);
+			haydn_ipa_kept = haydn_parked[i];
+			continue;
+		}
 		haydn_sdam_put(0x50, haydn_parked[i]);
 		enable_irq(haydn_parked[i]);
 		msleep(50);
@@ -702,6 +728,8 @@ static int haydn_park_notify(struct notifier_block *nb, unsigned long action,
 
 			if (!n || (strcmp(n, "ipa") && strcmp(n, "gsi")))
 				continue;
+			if ((int)irq == haydn_ipa_kept)
+				continue;	/* already disabled for good */
 			if (haydn_nparked >= ARRAY_SIZE(haydn_parked))
 				break;
 			disable_irq(irq);
