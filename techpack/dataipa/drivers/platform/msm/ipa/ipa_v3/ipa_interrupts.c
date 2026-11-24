@@ -37,6 +37,8 @@ static DECLARE_DELAYED_WORK(dwork_en_suspend_int,
 						ipa3_enable_tx_suspend_wa);
 static spinlock_t suspend_wa_lock;
 static void ipa3_process_interrupts(bool isr_context);
+/* haydn diag: PMIC breadcrumb of IPA IRQ steps around suspend */
+void haydn_pm_ipa_mark(u8 step, u32 val);
 
 static int ipa3_irq_mapping[IPA_IRQ_MAX] = {
 	[IPA_BAD_SNOC_ACCESS_IRQ]		= 0,
@@ -270,8 +272,11 @@ static void ipa3_process_interrupts(bool isr_context)
 	IPADBG_LOW("Enter isr_context=%d\n", isr_context);
 
 	spin_lock_irqsave(&suspend_wa_lock, flags);
+	haydn_pm_ipa_mark(6, isr_context);
 	en = ipahal_read_reg_n(IPA_IRQ_EN_EE_n, ipa_ee);
+	haydn_pm_ipa_mark(7, en);
 	reg = ipahal_read_reg_n(IPA_IRQ_STTS_EE_n, ipa_ee);
+	haydn_pm_ipa_mark(8, reg);
 	while (en & reg) {
 		IPADBG_LOW("en=0x%x reg=0x%x\n", en, reg);
 		bmsk = 1;
@@ -297,7 +302,9 @@ static void ipa3_process_interrupts(bool isr_context)
 				 * locked.
 				 */
 				spin_unlock_irqrestore(&suspend_wa_lock, flags);
+				haydn_pm_ipa_mark(9, i);
 				ipa3_handle_interrupt(i, isr_context);
+				haydn_pm_ipa_mark(10, i);
 				spin_lock_irqsave(&suspend_wa_lock, flags);
 
 				/*
@@ -319,6 +326,7 @@ static void ipa3_process_interrupts(bool isr_context)
 	}
 
 	spin_unlock_irqrestore(&suspend_wa_lock, flags);
+	haydn_pm_ipa_mark(11, 0);
 	IPADBG_LOW("Exit\n");
 }
 
@@ -327,7 +335,9 @@ static void ipa3_interrupt_defer(struct work_struct *work)
 	struct ipa_active_client_logging_info log_info;
 
 	IPADBG("processing interrupts in wq\n");
+	haydn_pm_ipa_mark(4, 0);
 	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+	haydn_pm_ipa_mark(5, 0);
 	ipa3_process_interrupts(false);
 	IPA_ACTIVE_CLIENTS_PREP_SIMPLE(log_info);
 	/* Delay the devote process to have time to get gsi ieob irq */
@@ -369,12 +379,15 @@ static irqreturn_t ipa3_isr(int irq, void *ctxt)
 
 	IPA_ACTIVE_CLIENTS_PREP_SIMPLE(log_info);
 	IPADBG_LOW("Enter\n");
+	haydn_pm_ipa_mark(1, 0);
 	/* defer interrupt handling in case IPA is not clocked on */
 	if (ipa3_inc_client_enable_clks_no_block(&log_info)) {
 		IPADBG("defer interrupt processing\n");
+		haydn_pm_ipa_mark(3, 0);
 		queue_work(ipa3_ctx->power_mgmt_wq, &ipa3_interrupt_defer_work);
 		return IRQ_HANDLED;
 	}
+	haydn_pm_ipa_mark(2, 0);
 
 	ipa3_process_interrupts(true);
 	IPADBG_LOW("Exit\n");

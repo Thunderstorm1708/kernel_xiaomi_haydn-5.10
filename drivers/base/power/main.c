@@ -645,6 +645,29 @@ static unsigned int haydn_nparked;
 
 static void haydn_sdam_put(u8 code, u32 val);
 
+/*
+ * haydn diag: IPA IRQ path breadcrumb (code 0x52, step in byte 2, value in
+ * bytes 3-5), written over SPMI so it works in hard IRQ context. Active from
+ * PM_SUSPEND_PREPARE until 20 s after PM_POST_SUSPEND.
+ */
+static bool haydn_ipa_window;
+static unsigned long haydn_ipa_window_end;
+
+void haydn_pm_ipa_mark(u8 step, u32 val)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x52, step, val, val >> 8, val >> 16 };
+
+	if (!READ_ONCE(haydn_ipa_window) || !sdev || READ_ONCE(haydn_died))
+		return;
+	if (haydn_ipa_window_end && time_after(jiffies, haydn_ipa_window_end)) {
+		WRITE_ONCE(haydn_ipa_window, false);
+		return;
+	}
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+EXPORT_SYMBOL(haydn_pm_ipa_mark);
+
 static void haydn_unpark_fn(struct work_struct *w)
 {
 	unsigned int i;
@@ -666,6 +689,9 @@ static int haydn_park_notify(struct notifier_block *nb, unsigned long action,
 	unsigned int irq;
 
 	if (action == PM_SUSPEND_PREPARE) {
+		haydn_sdev_get();
+		haydn_ipa_window_end = 0;
+		WRITE_ONCE(haydn_ipa_window, true);
 		cancel_delayed_work_sync(&haydn_unpark_work);
 		if (haydn_nparked)
 			haydn_unpark_fn(NULL);
@@ -681,8 +707,10 @@ static int haydn_park_notify(struct notifier_block *nb, unsigned long action,
 			disable_irq(irq);
 			haydn_parked[haydn_nparked++] = irq;
 		}
-	} else if (action == PM_POST_SUSPEND && haydn_nparked) {
-		schedule_delayed_work(&haydn_unpark_work, 2 * HZ);
+	} else if (action == PM_POST_SUSPEND) {
+		haydn_ipa_window_end = jiffies + 20 * HZ;
+		if (haydn_nparked)
+			schedule_delayed_work(&haydn_unpark_work, 2 * HZ);
 	}
 	return NOTIFY_DONE;
 }
@@ -1055,6 +1083,19 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		HREPORT("haydn-pmtrace: stuck UFS/device PM task was RUNNING at module %s (crc %08x)\n",
 			mname ?: "?", crc);
 		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x52) {
+		static const char * const st[] = {
+			"?", "ipa3_isr entered", "ipa3_isr: IPA already clocked, reading regs",
+			"ipa3_isr: IPA not clocked, deferred to work",
+			"defer work: voting IPA clocks", "defer work: IPA clocks voted",
+			"process_interrupts: about to read IRQ_EN", "read IRQ_EN ok (value)",
+			"read IRQ_STTS ok (value)", "calling handler for IPA irq (value)",
+			"handler returned for IPA irq (value)", "process_interrupts done",
+		};
+		u32 val = b[3] | b[4] << 8 | b[5] << 16;
+
+		HREPORT("haydn-pmtrace: IPA path, last step %u: %s, value 0x%x\n",
+			b[2], b[2] < ARRAY_SIZE(st) ? st[b[2]] : "?", val);
 	} else if (b[1] == 0x50 || b[1] == 0x51) {
 		struct irq_desc *pd = irq_to_desc(crc & 0xffffu);
 
