@@ -259,8 +259,13 @@ static struct irq_chip qcom_pdc_gic_chip = {
 	.irq_set_type		= qcom_pdc_gic_set_type,
 	.flags			= IRQCHIP_MASK_ON_SUSPEND |
 				  IRQCHIP_SET_TYPE_MASKED |
-				  IRQCHIP_SKIP_SET_WAKE |
-				  IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND,
+				  IRQCHIP_SKIP_SET_WAKE,
+	/*
+	 * haydn: no IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND (msm-5.4 behaviour). With
+	 * it the core unmasks wake IRQs that their (5.4-era) drivers disabled
+	 * before suspend, e.g. the touch IRQ of a powered-down panel, and the
+	 * SoC hangs right after resume when device IRQs come back.
+	 */
 	.irq_set_vcpu_affinity	= irq_chip_set_vcpu_affinity_parent,
 	.irq_set_affinity	= irq_chip_set_affinity_parent,
 };
