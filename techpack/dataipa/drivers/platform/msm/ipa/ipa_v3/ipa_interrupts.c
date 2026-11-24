@@ -3,6 +3,7 @@
  * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  */
 
+#include <linux/suspend.h>
 #include <linux/interrupt.h>
 #include "ipa_i.h"
 
@@ -334,6 +335,49 @@ static void ipa3_interrupt_defer(struct work_struct *work)
 	IPADBG("Done\n");
 }
 
+static int haydn_ipa_irq = -1;
+
+/*
+ * haydn: on 5.10 the SoC resets when this IRQ is re-enabled right after
+ * system resume (found with a PMIC breadcrumb, haydn diag #174-#199), even
+ * with a handler that touches no hardware. Keep it disabled from
+ * PM_SUSPEND_PREPARE until 2 s after PM_POST_SUSPEND. It no longer wakes the
+ * system from suspend; its events are handled once it is re-enabled.
+ */
+static bool haydn_ipa_parked;
+
+static void haydn_ipa_unpark(struct work_struct *work)
+{
+	if (haydn_ipa_parked) {
+		haydn_ipa_parked = false;
+		enable_irq(haydn_ipa_irq);
+	}
+}
+static DECLARE_DELAYED_WORK(haydn_ipa_unpark_work, haydn_ipa_unpark);
+
+static int haydn_ipa_pm_notify(struct notifier_block *nb, unsigned long action,
+			  void *data)
+{
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		cancel_delayed_work_sync(&haydn_ipa_unpark_work);
+		if (!haydn_ipa_parked && haydn_ipa_irq >= 0) {
+			disable_irq(haydn_ipa_irq);
+			haydn_ipa_parked = true;
+		}
+		break;
+	case PM_POST_SUSPEND:
+		if (haydn_ipa_parked)
+			schedule_delayed_work(&haydn_ipa_unpark_work, 2 * HZ);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_ipa_pm_nb = {
+	.notifier_call = haydn_ipa_pm_notify,
+};
+
 static irqreturn_t ipa3_isr(int irq, void *ctxt)
 {
 	struct ipa_active_client_logging_info log_info;
@@ -538,6 +582,10 @@ int ipa3_interrupts_init(u32 ipa_irq, u32 ee, struct device *ipa_dev)
 				   ipa_irq, res);
 		else
 			IPADBG("IPA IRQ wakeup enabled irq=%d\n", ipa_irq);
+		if (haydn_ipa_irq < 0) {
+			haydn_ipa_irq = ipa_irq;
+			register_pm_notifier(&haydn_ipa_pm_nb);
+		}
 	}
 	spin_lock_init(&suspend_wa_lock);
 	return 0;
@@ -556,6 +604,8 @@ int ipa3_interrupts_init(u32 ipa_irq, u32 ee, struct device *ipa_dev)
 void ipa3_interrupts_destroy(u32 ipa_irq, struct device *ipa_dev)
 {
 	if (ipa3_ctx->ipa3_hw_mode != IPA_HW_MODE_EMULATION) {
+		cancel_delayed_work_sync(&haydn_ipa_unpark_work);
+		haydn_ipa_unpark(NULL);
 		disable_irq_wake(ipa_irq);
 		free_irq(ipa_irq, ipa_dev);
 	}

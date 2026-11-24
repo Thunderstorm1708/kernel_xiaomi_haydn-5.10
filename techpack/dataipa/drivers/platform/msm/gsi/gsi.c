@@ -4,6 +4,7 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/suspend.h>
 #include <linux/of.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -842,6 +843,47 @@ static void gsi_handle_irq(void)
 
 	}
 }
+
+/*
+ * haydn: on 5.10 the SoC resets when this IRQ is re-enabled right after
+ * system resume (found with a PMIC breadcrumb, haydn diag #174-#199), even
+ * with a handler that touches no hardware. Keep it disabled from
+ * PM_SUSPEND_PREPARE until 2 s after PM_POST_SUSPEND. It no longer wakes the
+ * system from suspend; its events are handled once it is re-enabled.
+ */
+static bool haydn_gsi_parked;
+
+static void haydn_gsi_unpark(struct work_struct *work)
+{
+	if (haydn_gsi_parked) {
+		haydn_gsi_parked = false;
+		enable_irq(gsi_ctx->per.irq);
+	}
+}
+static DECLARE_DELAYED_WORK(haydn_gsi_unpark_work, haydn_gsi_unpark);
+
+static int haydn_gsi_pm_notify(struct notifier_block *nb, unsigned long action,
+			  void *data)
+{
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		cancel_delayed_work_sync(&haydn_gsi_unpark_work);
+		if (!haydn_gsi_parked && gsi_ctx && gsi_ctx->per_registered) {
+			disable_irq(gsi_ctx->per.irq);
+			haydn_gsi_parked = true;
+		}
+		break;
+	case PM_POST_SUSPEND:
+		if (haydn_gsi_parked)
+			schedule_delayed_work(&haydn_gsi_unpark_work, 2 * HZ);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_gsi_pm_nb = {
+	.notifier_call = haydn_gsi_pm_notify,
+};
 
 static irqreturn_t gsi_isr(int irq, void *ctxt)
 {
@@ -5241,6 +5283,7 @@ static int msm_gsi_probe(struct platform_device *pdev)
 	gsi_ctx->dev = dev;
 	init_completion(&gsi_ctx->gen_ee_cmd_compl);
 	gsi_debugfs_init();
+	register_pm_notifier(&haydn_gsi_pm_nb);
 
 	return 0;
 }
