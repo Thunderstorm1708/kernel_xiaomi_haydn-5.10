@@ -45,6 +45,7 @@
 #include <linux/wakeup_reason.h>
 
 #include <linux/spmi.h>
+#include <linux/kdebug.h>
 #include <linux/kobject.h>
 #include <asm/sections.h>
 #include <linux/delay.h>
@@ -617,6 +618,90 @@ void haydn_pm_fn(void *fn)
 	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
 }
 
+/*
+ * haydn: a 60 s pm_test=core suspend (no real sleep, no wake IRQ) freezes
+ * like a real suspend, and the diag config has CONFIG_PANIC_TIMEOUT=0, so the
+ * "freeze" is most likely a kernel panic (BUG) after a long suspend. Record
+ * where: on die() the PC of the BUG (0x48 core kernel offset from _stext,
+ * 0x49 crc32 of the module), on a plain panic() 0x4a + first 4 chars of the
+ * message. Other records stop after this.
+ */
+static bool haydn_died;
+
+void haydn_pm_dpm_timeout(struct device *dev)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	const char *n = dev_name(dev);
+	u32 v = crc32_le(0, n, strlen(n));
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x4b, v, v >> 8, v >> 16, v >> 24 };
+
+	WRITE_ONCE(haydn_pm_resuming, false);
+	if (sdev)
+		spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf,
+					 sizeof(buf));
+}
+
+static void haydn_put_pc(unsigned long pc, u8 core_code)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, core_code };
+	u32 v;
+
+	if (!sdev)
+		return;
+	if (pc && core_kernel_text(pc)) {
+		v = pc - (unsigned long)_stext;
+	} else {
+		struct module *mod = pc ? __module_address(pc) : NULL;
+
+		v = mod ? crc32_le(0, mod->name, strlen(mod->name)) : 0;
+		buf[1] = core_code + 1;
+	}
+	buf[2] = v; buf[3] = v >> 8; buf[4] = v >> 16; buf[5] = v >> 24;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+
+static int haydn_die_notify(struct notifier_block *nb, unsigned long val,
+			    void *data)
+{
+	struct die_args *args = data;
+
+	if (READ_ONCE(haydn_died) || !args || !args->regs)
+		return NOTIFY_DONE;
+	WRITE_ONCE(haydn_died, true);
+	WRITE_ONCE(haydn_pm_resuming, false);
+	haydn_put_pc(instruction_pointer(args->regs), 0x48);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_die_nb = {
+	.notifier_call = haydn_die_notify,
+	.priority = INT_MAX,
+};
+
+static int haydn_panic_notify(struct notifier_block *nb, unsigned long val,
+			      void *data)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	const char *msg = data;
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x4a, ' ', ' ', ' ', ' ' };
+	int i;
+
+	WRITE_ONCE(haydn_pm_resuming, false);
+	if (READ_ONCE(haydn_died) || !sdev)
+		return NOTIFY_DONE;
+	WRITE_ONCE(haydn_died, true);
+	for (i = 0; msg && i < 4 && msg[i]; i++)
+		buf[2 + i] = msg[i];
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block haydn_panic_nb = {
+	.notifier_call = haydn_panic_notify,
+	.priority = INT_MAX,
+};
+
 void haydn_pm_hardirq(unsigned int irq, bool done)
 {
 	u32 v = irq | (done ? 0x04000000u : 0x02000000u);
@@ -820,6 +905,44 @@ static void haydn_pmtrace_report(struct work_struct *w)
 			desc->action->name : "?",
 			d && d->chip && d->chip->name ? d->chip->name : "?",
 			d ? d->hwirq : 0);
+	} else if (b[1] == 0x48) {
+		HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS at %pS\n",
+			(void *)((unsigned long)_stext + crc));
+	} else if (b[1] == 0x49) {
+		struct kobject *k;
+		const char *mname = NULL;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				mname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS in module %s (crc %08x)\n",
+			mname ?: "?", crc);
+		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x4b) {
+		struct kobject *k;
+		const char *dname = NULL;
+
+		spin_lock(&devices_kset->list_lock);
+		list_for_each_entry(k, &devices_kset->list, entry) {
+			const char *n = kobject_name(k);
+
+			if (n && crc32_le(0, n, strlen(n)) == crc) {
+				dname = n;
+				break;
+			}
+		}
+		HREPORT("haydn-pmtrace: DEVICE SUSPEND/RESUME STUCK > 5 s: %s (crc %08x)\n",
+			dname ?: "?", crc);
+		spin_unlock(&devices_kset->list_lock);
+	} else if (b[1] == 0x4a) {
+		HREPORT("haydn-pmtrace: previous boot PANICKED: \"%c%c%c%c...\"\n",
+			b[2], b[3], b[4], b[5]);
 	} else if (b[1] == 0x43) {
 		HREPORT("haydn-pmtrace: previous boot ended in timer/tasklet callback %pS\n",
 			(void *)((unsigned long)_stext + crc));
@@ -899,6 +1022,8 @@ static DECLARE_DELAYED_WORK(haydn_pmtrace_work, haydn_pmtrace_report);
 static int __init haydn_pmtrace_init(void)
 {
 	schedule_delayed_work(&haydn_pmtrace_work, 20 * HZ);
+	register_die_notifier(&haydn_die_nb);
+	atomic_notifier_chain_register(&panic_notifier_list, &haydn_panic_nb);
 	return 0;
 }
 late_initcall_sync(haydn_pmtrace_init);
@@ -974,14 +1099,22 @@ struct dpm_watchdog {
  * There's not much we can do here to recover so panic() to
  * capture a crash-dump in pstore.
  */
+void haydn_pm_dpm_timeout(struct device *dev);
+
 static void dpm_watchdog_handler(struct timer_list *t)
 {
 	struct dpm_watchdog *wd = from_timer(wd, t, timer);
 
-	dev_emerg(wd->dev, "**** DPM device timeout ****\n");
+	/*
+	 * haydn diag: #188 + 60 s pm_test=core died in this handler: a device
+	 * suspend/resume callback took longer than DPM_WATCHDOG_TIMEOUT. Name
+	 * it in the PMIC breadcrumb (code 0x4b, crc32 of dev_name) and print
+	 * its stack instead of panicking, so dmesg shows where it is stuck.
+	 */
+	haydn_pm_dpm_timeout(wd->dev);
+	dev_emerg(wd->dev, "**** DPM device timeout **** driver %s\n",
+		  dev_driver_string(wd->dev));
 	show_stack(wd->tsk, NULL, KERN_EMERG);
-	panic("%s %s: unrecoverable failure\n",
-		dev_driver_string(wd->dev), dev_name(wd->dev));
 }
 
 /**
