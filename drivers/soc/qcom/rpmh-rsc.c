@@ -1165,6 +1165,9 @@ static struct rsc_drv_top *rpmh_rsc_get_top_device(const char *name)
 	return rsc_top;
 }
 
+static bool haydn_rsc_sw_flush = true;
+module_param(haydn_rsc_sw_flush, bool, 0444);
+
 static int rpmh_rsc_syscore_suspend(void)
 {
 	struct rsc_drv_top *rsc_top = rpmh_rsc_get_top_device("apps_rsc");
@@ -1376,10 +1379,25 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 			return ret;
 		}
 		register_syscore_ops(&rpmh_rsc_syscore_ops);
-	} else if (!solver_config) {
+	} else if (!solver_config || haydn_rsc_sw_flush) {
+		/*
+		 * haydn: msm-5.4 lahaina never used the HW solver. Its lpm-levels
+		 * driver flushed the cached sleep/wake votes to the sleep/wake
+		 * TCSes (rpmh_flush via system_pm) every time the last CPU went
+		 * into an AOSS-sleep capable state, including system suspend.
+		 * The lahaina DT has no power-domains for apps_rsc, so on 5.10 a
+		 * set solver bit in DRV_SOLVER_CONFIG left nobody flushing at
+		 * all and the SoC woke up with stale sleep/wake sets. Do as 5.4:
+		 * flush from the last-CPU cpu_pm notifier and at syscore suspend.
+		 */
+		if (solver_config)
+			pr_info("%s: HW solver bit set, using SW flush like msm-5.4\n",
+				drv->name);
 		drv->rsc_pm.notifier_call = rpmh_rsc_cpu_pm_callback;
 		cpu_pm_register_notifier(&drv->rsc_pm);
 		drv->client.flags &= ~SOLVER_PRESENT;
+		if (!strcmp(drv->name, "apps_rsc"))
+			register_syscore_ops(&rpmh_rsc_syscore_ops);
 	} else {
 		drv->client.flags |= SOLVER_PRESENT;
 	}
