@@ -1333,8 +1333,13 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 #define gic_smp_init()		do { } while(0)
 #endif
 
+/* haydn: see kernel/irq/resend.c; 0 = fall back to the 5.4-style SW resend */
+extern bool haydn_gic_hw_retrigger;
+
 static int gic_retrigger(struct irq_data *data)
 {
+	if (!READ_ONCE(haydn_gic_hw_retrigger))
+		return 0;
 	return !gic_irq_set_irqchip_state(data, IRQCHIP_STATE_PENDING, true);
 }
 

@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/interrupt.h>
+#include <linux/moduleparam.h>
 
 #include "internals.h"
 
@@ -47,6 +48,19 @@ static void resend_irqs(unsigned long arg)
 /* Tasklet to handle resend: */
 static DECLARE_TASKLET_OLD(resend_tasklet, resend_irqs);
 
+/*
+ * haydn: msm-5.4 never retriggered an interrupt by writing the GIC
+ * distributor pending bit (GICv3 had no irq_retrigger then): edge
+ * interrupts that arrived while disabled (wake IRQs during suspend, lazily
+ * disabled lines) were replayed by the software resend tasklet. On 5.10
+ * gic_retrigger() sets GICD_ISPENDR instead, and on haydn the SoC hangs at
+ * that moment after resume (secure watchdog reset). With
+ * haydn_gic_hw_retrigger=0 (default) do it the 5.4 way.
+ */
+bool haydn_gic_hw_retrigger;
+core_param(haydn_gic_hw_retrigger, haydn_gic_hw_retrigger, bool, 0644);
+EXPORT_SYMBOL(haydn_gic_hw_retrigger);
+
 static int irq_sw_resend(struct irq_desc *desc)
 {
 	unsigned int irq = irq_desc_get_irq(desc);
@@ -55,7 +69,8 @@ static int irq_sw_resend(struct irq_desc *desc)
 	 * Validate whether this interrupt can be safely injected from
 	 * non interrupt context
 	 */
-	if (handle_enforce_irqctx(&desc->irq_data))
+	if (handle_enforce_irqctx(&desc->irq_data) &&
+	    READ_ONCE(haydn_gic_hw_retrigger))
 		return -EINVAL;
 
 	/*
