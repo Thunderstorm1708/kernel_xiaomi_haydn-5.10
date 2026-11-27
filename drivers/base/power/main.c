@@ -1026,6 +1026,8 @@ static void haydn_pmtrace_report(struct work_struct *w)
 	u32 crc;
 	bool found = false;
 
+	/* the hardware marks need the SPMI device even when nothing was saved */
+	haydn_sdev_get();
 	if (!nv) {
 		HREPORT("haydn-pmtrace: SDAM sdam@7100 not found\n");
 		return;
