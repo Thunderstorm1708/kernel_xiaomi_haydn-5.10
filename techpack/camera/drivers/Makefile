@@ -32,6 +32,7 @@ camera-y := \
 	cam_utils/cam_debug_util.o \
 	cam_utils/cam_trace.o \
 	cam_utils/cam_common_util.o \
+	cam_utils/cam_ubsan_report.o \
 	cam_utils/cam_compat.o \
 	cam_core/cam_context.o \
 	cam_core/cam_context_utils.o \
