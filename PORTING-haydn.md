@@ -1232,4 +1232,6 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | #235 | - | build failed | modpost: `__ubsan_handle_out_of_bounds` undefined for camera.ko (GKI does not hand it to modules) |
 | #237 | Zorix A16 | photos save | camera.ko carries its own out-of-bounds report handler (`cam_utils/cam_ubsan_report.c`); camera built with `UBSAN_SANITIZE := n` + `-fsanitize=array-bounds` (report, no trap) to print the exact file:line and index |
 |  |  |  | UBSAN report: `cam_icp_hw_mgr.c:1174-1182` index 0xffffffe0 (-32) into `struct cam_axi_per_path_bw_vote[6]` (`cam_icp_update_bw_v2`, from `cam_context_sync_callback`). CamX's IPE vote has `path_data_type` 0, so `path_data_type - CAM_AXI_PATH_DATA_IPE_START_OFFSET` = -32 and only `>= CAM_ICP_MAX_PER_PATH_VOTES` was checked: memory corruption on 5.4, oops on 5.10 |
-| next diag | Zorix A16 | to be tested | fix: `msm: camera: icp: reject negative AXI path index` (also checked at the context release path) |
+| #237 | Zorix A16 | photos and videos save, capture OK | (camera with UBSAN report mode) |
+| #239 | Zorix A16 | to be tested | fix: `msm: camera: icp: reject negative AXI path index` (also checked at the context release path) |
+| next diag | Zorix A16 | to be tested | GPU lag / slow screen wake since CVP: `pr_warn` for every GMU OOB request over 5 ms; A/B with `rmmod msm_cvp` |
