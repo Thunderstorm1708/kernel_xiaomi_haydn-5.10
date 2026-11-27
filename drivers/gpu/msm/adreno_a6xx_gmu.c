@@ -863,8 +863,11 @@ int a6xx_gmu_oob_set(struct kgsl_device *device,
 	gmu_core_regwrite(device, A6XX_GMU_GMU2HOST_INTR_CLR, check);
 
 	/* haydn diag: only slow (> 5 ms) OOB requests, oob | ms << 8 */
-	if (ktime_ms_delta(ktime_get(), t0) > 5)
+	if (ktime_ms_delta(ktime_get(), t0) > 5) {
 		haydn_mark(0x71, req | (u32)ktime_ms_delta(ktime_get(), t0) << 8);
+		pr_warn_ratelimited("haydn: GMU OOB %d took %lld ms\n", req,
+				    ktime_ms_delta(ktime_get(), t0));
+	}
 	trace_kgsl_gmu_oob_set(set);
 	return ret;
 }
