@@ -295,6 +295,7 @@ static int __set_subcaches(struct iris_hfi_device *device);
 static int __release_subcaches(struct iris_hfi_device *device);
 static int __disable_subcaches(struct iris_hfi_device *device);
 static int __power_collapse(struct iris_hfi_device *device, bool force);
+extern void haydn_mark(u8 code, u32 val);
 static int iris_hfi_noc_error_info(void *dev);
 
 static void interrupt_init_iris2(struct iris_hfi_device *device);
@@ -899,6 +900,7 @@ static void __write_register(struct iris_hfi_device *device,
 	dprintk(CVP_REG, "Base addr: %pK, written to: %#x, Value: %#x...\n",
 		base_addr, hwiosymaddr, value);
 	base_addr += hwiosymaddr;
+	haydn_mark(0x60, (hwiosymaddr & 0xffffff) | (value << 24));
 	writel_relaxed(value, base_addr);
 
 	/*
@@ -928,6 +930,7 @@ static int __read_register(struct iris_hfi_device *device, u32 reg)
 
 	base_addr = device->cvp_hal_data->register_base;
 
+	haydn_mark(0x61, reg);
 	rc = readl_relaxed(base_addr + reg);
 	/*
 	 * Memory barrier to make sure value is read correctly from the
@@ -1424,7 +1427,10 @@ err_q_null:
 static int __iface_cmdq_write(struct iris_hfi_device *device, void *pkt)
 {
 	bool needs_interrupt = false;
-	int rc = __iface_cmdq_write_relaxed(device, pkt, &needs_interrupt);
+	int rc;
+
+	haydn_mark(0x62, ((u32 *)pkt)[1]);
+	rc = __iface_cmdq_write_relaxed(device, pkt, &needs_interrupt);
 
 	if (!rc && needs_interrupt) {
 		/* Consumer of cmdq prefers that we raise an interrupt */
@@ -2691,6 +2697,7 @@ static int __power_collapse(struct iris_hfi_device *device, bool force)
 	int count = 0;
 	const int max_tries = 150;
 
+	haydn_mark(0x63, force);
 	if (!device) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
 		return -EINVAL;
@@ -4250,6 +4257,7 @@ static inline int __resume(struct iris_hfi_device *device)
 	int rc = 0;
 	u32 flags = 0, reg_gdsc, reg_cbcr;
 
+	haydn_mark(0x65, device ? device->power_enabled : 0);
 	if (!device) {
 		dprintk(CVP_ERR, "Invalid params: %pK\n", device);
 		return -EINVAL;

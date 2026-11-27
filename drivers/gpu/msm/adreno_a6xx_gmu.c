@@ -813,6 +813,8 @@ static void trigger_reset_recovery(struct adreno_device *adreno_dev,
 			ADRENO_GMU_FAULT_SKIP_SNAPSHOT);
 }
 
+extern void haydn_mark(u8 code, u32 val);
+
 int a6xx_gmu_oob_set(struct kgsl_device *device,
 		enum oob_request req)
 {
@@ -820,6 +822,7 @@ int a6xx_gmu_oob_set(struct kgsl_device *device,
 	struct a6xx_gmu_device *gmu = to_a6xx_gmu(adreno_dev);
 	int ret = 0;
 	int set, check;
+	ktime_t t0;
 
 	if (req == oob_perfcntr && gmu->num_oob_perfcntr++)
 		return 0;
@@ -845,8 +848,10 @@ int a6xx_gmu_oob_set(struct kgsl_device *device,
 
 	gmu_core_regwrite(device, A6XX_GMU_HOST2GMU_INTR_SET, set);
 
+	t0 = ktime_get();
 	if (gmu_core_timed_poll_check(device, A6XX_GMU_GMU2HOST_INTR_INFO,
 				check, GPU_START_TIMEOUT, check)) {
+		haydn_mark(0x72, req);
 		if (req == oob_perfcntr)
 			gmu->num_oob_perfcntr--;
 		gmu_core_fault_snapshot(device);
@@ -857,6 +862,9 @@ int a6xx_gmu_oob_set(struct kgsl_device *device,
 
 	gmu_core_regwrite(device, A6XX_GMU_GMU2HOST_INTR_CLR, check);
 
+	/* haydn diag: only slow (> 5 ms) OOB requests, oob | ms << 8 */
+	if (ktime_ms_delta(ktime_get(), t0) > 5)
+		haydn_mark(0x71, req | (u32)ktime_ms_delta(ktime_get(), t0) << 8);
 	trace_kgsl_gmu_oob_set(set);
 	return ret;
 }

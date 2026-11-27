@@ -669,6 +669,28 @@ void haydn_pm_ipa_mark(u8 step, u32 val)
 EXPORT_SYMBOL(haydn_pm_ipa_mark);
 
 /*
+ * haydn diag: camera freeze. Codes 0x60-0x7f mark CVP register/queue access
+ * and KGSL GMU OOB requests just before they happen (6 bytes, SPMI, works in
+ * atomic context), so after a hard freeze the next boot names the last
+ * hardware access. haydn_hw_mark=0 turns it off.
+ */
+static bool haydn_hw_mark = true;
+core_param(haydn_hw_mark, haydn_hw_mark, bool, 0644);
+
+void haydn_mark(u8 code, u32 val)
+{
+	struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+	u8 buf[6] = { HAYDN_SDAM_MAGIC, code, val, val >> 8, val >> 16,
+		      val >> 24 };
+
+	if (!READ_ONCE(haydn_hw_mark) || !sdev || READ_ONCE(haydn_died) ||
+	    READ_ONCE(haydn_pm_resuming))
+		return;
+	spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF, buf, sizeof(buf));
+}
+EXPORT_SYMBOL(haydn_mark);
+
+/*
  * haydn diag #203: the SoC died right at enable_irq(36) 2 s after resume,
  * before ipa3_isr() was entered. Keep IPA's own IRQ ("ipa") disabled for good
  * after the first suspend (GSI, which carries the data path, is still
@@ -1095,6 +1117,20 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS in module %s (crc %08x)\n",
 			mname ?: "?", crc);
 		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] >= 0x60 && b[1] <= 0x7f) {
+		static const char * const hw[0x20] = {
+			[0x00] = "CVP register WRITE (reg | value<<24)",
+			[0x01] = "CVP register READ (reg)",
+			[0x02] = "CVP command queue write (packet type)",
+			[0x03] = "CVP power collapse start (force)",
+			[0x05] = "CVP resume start (power_enabled)",
+			[0x11] = "KGSL GMU OOB set was SLOW (oob | ms<<8)",
+			[0x12] = "KGSL GMU OOB set TIMEOUT (oob)",
+		};
+		u32 v = b[2] | b[3] << 8 | b[4] << 16 | (u32)b[5] << 24;
+
+		HREPORT("haydn-pmtrace: last hardware mark before the freeze: %s: %08x (code %02x)\n",
+			hw[b[1] - 0x60] ?: "?", v, b[1]);
 	} else if (b[1] == 0x5a) {
 		struct kobject *k;
 		u32 off = b[3] | b[4] << 8 | b[5] << 16;
