@@ -1220,3 +1220,5 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 * xiaomi-lahaina-devs (`5.10-sm8350-H`): the reference 5.10 port. `bootlog.c`
   (logdump bootlog) comes from it.
 * osm0sis for AnyKernel3.
+| #219 | Zorix A16 | **Fixed**: ~2 h uptime with repeated real screen-off suspends (3, 5, 15, 30+ min rounds), no reset, without any IPA/GSI park | 5.4-style software IRQ resend (+ TLMM/PDC 5.4 behaviour) |
+| main | Zorix A16 | to be tested | **Suspend reset fix on main:** `irq-gic-v3.c` / `kernel/irq/resend.c` software IRQ resend instead of the GICD_ISPENDR hardware retrigger (`haydn_gic_hw_retrigger=0`), `pinctrl-msm.c` / `qcom-pdc.c` 5.4 wake and enable behaviour; the IPA/GSI 2 s park (#201) is reverted, IPA/GSI wake the system again. Root cause: since Linux 5.9 GICv3 replays an edge IRQ that arrived while disabled by setting its GIC distributor pending bit; on haydn that hangs the SoC right after resume (secure watchdog, PS_HOLD warm resets). msm-5.4 had no GIC retrigger. The same applies to 6.x kernels on this SoC |
