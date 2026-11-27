@@ -12,6 +12,12 @@ endif
 ccflags-y += -I$(srctree)/techpack/camera/include/uapi/camera
 ccflags-y += -I$(srctree)
 
+# haydn diag: the GKI traps on UBSAN array-bounds; msm-5.4 built camera
+# without UBSAN. Report out-of-bounds accesses (file:line, index) and go on
+# instead of oopsing, to find the bad index.
+UBSAN_SANITIZE := n
+ccflags-$(CONFIG_UBSAN_ARRAY_BOUNDS) += -fsanitize=array-bounds
+
 camera-y := \
 	cam_req_mgr/cam_req_mgr_core.o \
 	cam_req_mgr/cam_req_mgr_dev.o \
