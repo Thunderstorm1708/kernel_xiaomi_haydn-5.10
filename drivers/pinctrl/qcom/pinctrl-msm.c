@@ -1402,9 +1402,13 @@ static int msm_gpio_init(struct msm_pinctrl *pctrl)
 	pctrl->irq_chip.irq_release_resources = msm_gpio_irq_relres;
 	pctrl->irq_chip.irq_set_affinity = msm_gpio_irq_set_affinity;
 	pctrl->irq_chip.irq_set_vcpu_affinity = msm_gpio_irq_set_vcpu_affinity;
+	/*
+	 * haydn: no IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND, as in msm-5.4: do not let
+	 * the IRQ core unmask wake GPIO IRQs that their drivers disabled for
+	 * suspend (see qcom-pdc.c).
+	 */
 	pctrl->irq_chip.flags = IRQCHIP_MASK_ON_SUSPEND |
-				IRQCHIP_SET_TYPE_MASKED |
-				IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND;
+				IRQCHIP_SET_TYPE_MASKED;
 
 	np = of_parse_phandle(pctrl->dev->of_node, "wakeup-parent", 0);
 	if (np) {
