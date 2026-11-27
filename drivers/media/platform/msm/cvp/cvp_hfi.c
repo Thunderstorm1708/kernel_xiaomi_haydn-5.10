@@ -2073,8 +2073,7 @@ static int iris_hfi_core_init(void *device)
 	__sys_set_idle_indicator(device, true);
 
 	if (dev->res->pm_qos_latency_us)
-		pm_qos_add_request(&dev->qos, PM_QOS_CPU_DMA_LATENCY,
-				dev->res->pm_qos_latency_us);
+		cpu_latency_qos_add_request(&dev->qos, dev->res->pm_qos_latency_us);
 
 	mutex_unlock(&dev->lock);
 
@@ -2107,8 +2106,8 @@ static int iris_hfi_core_release(void *dev)
 	mutex_lock(&device->lock);
 	dprintk(CVP_WARN, "Core releasing\n");
 	if (device->res->pm_qos_latency_us &&
-		pm_qos_request_active(&device->qos))
-		pm_qos_remove_request(&device->qos);
+		cpu_latency_qos_request_active(&device->qos))
+		cpu_latency_qos_remove_request(&device->qos);
 
 	__resume(device);
 	__set_state(device, IRIS_STATE_DEINIT);
@@ -4123,8 +4122,8 @@ static inline int __suspend(struct iris_hfi_device *device)
 	dprintk(CVP_PWR, "Entering suspend\n");
 
 	if (device->res->pm_qos_latency_us &&
-		pm_qos_request_active(&device->qos))
-		pm_qos_remove_request(&device->qos);
+		cpu_latency_qos_request_active(&device->qos))
+		cpu_latency_qos_remove_request(&device->qos);
 
 	rc = __tzbsp_set_cvp_state(TZ_SUBSYS_STATE_SUSPEND);
 	if (rc) {
@@ -4297,8 +4296,7 @@ static inline int __resume(struct iris_hfi_device *device)
 	__set_threshold_registers(device);
 
 	if (device->res->pm_qos_latency_us)
-		pm_qos_add_request(&device->qos, PM_QOS_CPU_DMA_LATENCY,
-				device->res->pm_qos_latency_us);
+		cpu_latency_qos_add_request(&device->qos, device->res->pm_qos_latency_us);
 
 	__sys_set_debug(device, msm_cvp_fw_debug);
 
