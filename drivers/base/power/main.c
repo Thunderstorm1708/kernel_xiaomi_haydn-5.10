@@ -819,7 +819,29 @@ static int haydn_die_notify(struct notifier_block *nb, unsigned long val,
 		return NOTIFY_DONE;
 	WRITE_ONCE(haydn_died, true);
 	WRITE_ONCE(haydn_pm_resuming, false);
-	haydn_put_pc(instruction_pointer(args->regs), 0x48);
+	{
+		unsigned long pc = instruction_pointer(args->regs);
+		struct module *mod = core_kernel_text(pc) ? NULL :
+				     __module_address(pc);
+		struct spmi_device *sdev = READ_ONCE(haydn_sdev);
+
+		/*
+		 * Oops in a module: code 0x5a, low byte of the crc32 of the
+		 * module name, then the 24-bit offset of the PC in its core
+		 * text, so the next boot can name the function.
+		 */
+		if (mod && sdev) {
+			u32 c = crc32_le(0, mod->name, strlen(mod->name));
+			u32 off = pc - (unsigned long)mod->core_layout.base;
+			u8 buf[6] = { HAYDN_SDAM_MAGIC, 0x5a, c, off,
+				      off >> 8, off >> 16 };
+
+			spmi_ext_register_writel(sdev, 0x7100 + HAYDN_SDAM_OFF,
+						 buf, sizeof(buf));
+		} else {
+			haydn_put_pc(pc, 0x48);
+		}
+	}
 	return NOTIFY_DONE;
 }
 
@@ -1073,6 +1095,28 @@ static void haydn_pmtrace_report(struct work_struct *w)
 		HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS in module %s (crc %08x)\n",
 			mname ?: "?", crc);
 		spin_unlock(&module_kset->list_lock);
+	} else if (b[1] == 0x5a) {
+		struct kobject *k;
+		u32 off = b[3] | b[4] << 8 | b[5] << 16;
+		bool found = false;
+
+		spin_lock(&module_kset->list_lock);
+		list_for_each_entry(k, &module_kset->list, entry) {
+			struct module *mod =
+				container_of(k, struct module_kobject, kobj)->mod;
+
+			if (!mod || (crc32_le(0, mod->name, strlen(mod->name)) & 0xff) != b[2] ||
+			    off >= mod->core_layout.text_size)
+				continue;
+			found = true;
+			HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS at %pS [%s+0x%x]\n",
+				(void *)((unsigned long)mod->core_layout.base + off),
+				mod->name, off);
+		}
+		spin_unlock(&module_kset->list_lock);
+		if (!found)
+			HREPORT("haydn-pmtrace: previous boot hit a KERNEL BUG/OOPS in a module (crc byte %02x, offset 0x%x)\n",
+				b[2], off);
 	} else if (b[1] == 0x4c) {
 		HREPORT("haydn-pmtrace: stuck UFS/device PM task was WAITING in %pS\n",
 			(void *)((unsigned long)_stext + crc));
