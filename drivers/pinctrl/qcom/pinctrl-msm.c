@@ -952,11 +952,29 @@ static void msm_gpio_irq_enable(struct irq_data *d)
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
 	struct msm_pinctrl *pctrl = gpiochip_get_data(gc);
 
-	if (d->parent_data)
+	/*
+	 * haydn: as msm-5.4 did, clear an interrupt that may be latched
+	 * before the line is enabled. GPIOs routed to the PDC are
+	 * direct-connect interrupts to the GIC: disabling the line at the PDC
+	 * does not stop the GIC from latching it, so a stale pending state
+	 * (e.g. from a device powered down for suspend) fires the moment the
+	 * line is enabled again on resume. For TLMM-only lines, ack the
+	 * latched status before unmasking.
+	 */
+	if (d->parent_data) {
+		irq_chip_set_parent_state(d, IRQCHIP_STATE_PENDING, false);
 		irq_chip_enable_parent(d);
+	}
 
-	if (!test_bit(d->hwirq, pctrl->skip_wake_irqs))
+	if (!test_bit(d->hwirq, pctrl->skip_wake_irqs)) {
+		const struct msm_pingroup *g = &pctrl->soc->groups[d->hwirq];
+		unsigned long flags;
+
+		raw_spin_lock_irqsave(&pctrl->lock, flags);
+		msm_ack_intr_status(pctrl, g);
+		raw_spin_unlock_irqrestore(&pctrl->lock, flags);
 		msm_gpio_irq_unmask(d);
+	}
 }
 
 static void msm_gpio_irq_disable(struct irq_data *d)
