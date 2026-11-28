@@ -22,6 +22,11 @@
 #include <linux/of.h>
 #include <linux/devfreq.h>
 #include <trace/events/power.h>
+/* the msm-5.4 bw_hwmon trace events are not in 5.10's trace/events/power.h */
+#define trace_bw_hwmon_meas(...)	do { } while (0)
+#define trace_bw_hwmon_update(...)	do { } while (0)
+#define trace_bw_hwmon_debug(...)	do { } while (0)
+
 #include "governor.h"
 #include "governor_bw_hwmon.h"
 
@@ -288,7 +293,8 @@ static unsigned long to_mbps_zone(struct hwmon_node *node, unsigned long mbps)
 		if (node->mbps_zones[i] >= mbps)
 			return node->mbps_zones[i];
 
-	return node->hw->df->max_freq;
+	/* 5.10 devfreq: max_freq became scaling_max_freq */
+	return node->hw->df->scaling_max_freq;
 }
 
 #define MIN_MBPS	500UL
@@ -616,8 +622,8 @@ static int gov_start(struct devfreq *df)
 		goto err_sysfs;
 	}
 
+	/* 5.10 devfreq has no min_freq/max_freq fields; just re-evaluate */
 	mutex_lock(&df->lock);
-	df->min_freq = df->max_freq;
 	update_devfreq(df);
 	mutex_unlock(&df->lock);
 

@@ -1251,3 +1251,4 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | #243 | Zorix A16 | not a bug | camera app: 60 fps works at 1080p and 4K; it is only greyed out with HDR video on (Xiaomi camera limits HDR video to 30 fps; same on 5.4) |
 | #249 | Zorix A16 | Bluetooth works (turns on, pairs, HCI/ACL traffic at 3.2 Mbaud) | BT: msm_geni_serial accepts the msm-5.4 TIOCPMGET/PUT/ACT numbers (0x544D-F) |
 | main | Zorix A16 | to be confirmed | BT fix moved to main: `msm_geni_serial: accept the msm-5.4 TIOCPMGET/PUT/ACT ioctl numbers` |
+| main | Zorix A16 | to be confirmed | CPU-L3/LLCC/DDR scaling moved to main (`ARM_MEMLAT_MON`, `DEVFREQ_GOV_MEMLAT`, `QCOM_BIMC_BWMON`, `DEVFREQ_GOV_QCOM_BW_HWMON` + their 5.10 build fixes). Checked on diag #249: all latency nodes run `mem_latency`/`compute`, the bandwidth nodes `bw_hwmon`; L3 (cpu5 614 -> 1248 MHz) and `cpu-llcc-ddr-bw` (5931 -> 3879) follow load |
