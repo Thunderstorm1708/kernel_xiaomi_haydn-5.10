@@ -1253,3 +1253,4 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | main | Zorix A16 | to be confirmed | BT fix moved to main: `msm_geni_serial: accept the msm-5.4 TIOCPMGET/PUT/ACT ioctl numbers` |
 | next diag | Zorix A16 | to be tested | lean diag for the idle-drain baseline (KernelSU kept for root): no clk/pd_ignore_unused, no logcat copy, no BT UART mirror, no PMIC breadcrumbs; memlat/bwmon governors still on |
 | #249 | Zorix A16 | devfreq OK | all latency nodes `mem_latency`/`compute`, bandwidth nodes `bw_hwmon`; L3 (cpu5 614 -> 1248 MHz) and `cpu-llcc-ddr-bw` (5931 -> 3879) follow load. Moved to main: `devfreq: enable the msm-5.4 CPU-L3/LLCC/DDR scaling governors` |
+| open | Zorix A16 | - | torch: QS tile turns it on, then greys out and cannot turn it off (the ROM Dynamic Island toggle can); only on 5.10. Suspect the cam_flash / PMIC flash LED path reporting the torch unavailable; logs pending |
