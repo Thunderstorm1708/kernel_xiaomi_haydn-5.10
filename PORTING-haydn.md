@@ -1234,4 +1234,6 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 |  |  |  | UBSAN report: `cam_icp_hw_mgr.c:1174-1182` index 0xffffffe0 (-32) into `struct cam_axi_per_path_bw_vote[6]` (`cam_icp_update_bw_v2`, from `cam_context_sync_callback`). CamX's IPE vote has `path_data_type` 0, so `path_data_type - CAM_AXI_PATH_DATA_IPE_START_OFFSET` = -32 and only `>= CAM_ICP_MAX_PER_PATH_VOTES` was checked: memory corruption on 5.4, oops on 5.10 |
 | #237 | Zorix A16 | photos and videos save, capture OK | (camera with UBSAN report mode) |
 | #239 | Zorix A16 | to be tested | fix: `msm: camera: icp: reject negative AXI path index` (also checked at the context release path) |
-| next diag | Zorix A16 | to be tested | GPU lag / slow screen wake since CVP: `pr_warn` for every GMU OOB request over 5 ms; A/B with `rmmod msm_cvp` |
+| #241 | Zorix A16 | camera OK (no UBSAN), wake still slow | no GMU OOB over 5 ms; still slow after `rmmod msm_cvp` and right after boot without camera: not CVP, not GPU |
+|  |  |  | dmesg: `Freezing user space processes` takes 4.7-7.5 s, one `smcinvoke: ... interrupted probaby due to suspend` line every 202.8 ms (~37 accept threads). `/proc/consoles`: `msm_geni_serial0 -W- (ECBp)`, a boot console (earlycon from the DT bootargs) that never goes away; GENI console write polls the UART at 115200 baud, so each KERN_ERR line (plus the queued backlog) costs ~200 ms under `g_smcinvoke_lock` |
+| next diag | Zorix A16 | to be tested | `# CONFIG_SERIAL_MSM_GENI_CONSOLE` / `# CONFIG_SERIAL_MSM_GENI_EARLY_CONSOLE is not set` (as msm-5.4 QGKI) |
