@@ -1252,3 +1252,4 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | #249 | Zorix A16 | Bluetooth works (turns on, pairs, HCI/ACL traffic at 3.2 Mbaud) | BT: msm_geni_serial accepts the msm-5.4 TIOCPMGET/PUT/ACT numbers (0x544D-F) |
 | main | Zorix A16 | to be confirmed | BT fix moved to main: `msm_geni_serial: accept the msm-5.4 TIOCPMGET/PUT/ACT ioctl numbers` |
 | next diag | Zorix A16 | to be tested | lean diag for the idle-drain baseline (KernelSU kept for root): no clk/pd_ignore_unused, no logcat copy, no BT UART mirror, no PMIC breadcrumbs; memlat/bwmon governors still on |
+| #249 | Zorix A16 | devfreq OK | all latency nodes `mem_latency`/`compute`, bandwidth nodes `bw_hwmon`; L3 (cpu5 614 -> 1248 MHz) and `cpu-llcc-ddr-bw` (5931 -> 3879) follow load. Moved to main: `devfreq: enable the msm-5.4 CPU-L3/LLCC/DDR scaling governors` |
