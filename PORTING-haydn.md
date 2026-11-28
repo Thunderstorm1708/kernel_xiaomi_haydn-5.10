@@ -336,7 +336,7 @@ Notes:
   (`0x54ED-0x54EF`). So the flow-off never reaches the RFR line, the
   controller replies at 3.2 Mbaud while the host is still at 115200 (one
   `fe` byte, `ReadNewHciEvent: Got an invalid proto byte: 254`) and init
-  stalls. The driver now accepts both sets of numbers (next diag).
+  stalls. The driver now accepts both sets of numbers: Bluetooth works (#249).
 
 ### Missing text / blinking images: ION cache maintenance test
 
@@ -1249,4 +1249,5 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | #243 | Zorix A16 | fixed: fast boot (system and recovery), fast screen wake, no app lag; camera photo/video OK | `# CONFIG_SERIAL_MSM_GENI_CONSOLE` / `# CONFIG_SERIAL_MSM_GENI_EARLY_CONSOLE is not set` (as msm-5.4 QGKI) |
 | main | Zorix A16 | to be confirmed | camera and console fixes moved to main: `haydn_GKI: build the CVP driver`, `msm_cvp: include linux/compat.h`, `msm_cvp: build on 5.10`, `msm: camera: icp: reject negative AXI path index`, `haydn: drop the GENI serial console and early console` (no diag UBSAN report mode, no breadcrumbs) |
 | #243 | Zorix A16 | not a bug | camera app: 60 fps works at 1080p and 4K; it is only greyed out with HDR video on (Xiaomi camera limits HDR video to 30 fps) |
-| next diag | Zorix A16 | to be tested | BT: msm_geni_serial accepts the msm-5.4 TIOCPMGET/PUT/ACT numbers (0x544D-F) |
+| #249 | Zorix A16 | Bluetooth works (turns on, pairs, HCI/ACL traffic at 3.2 Mbaud) | BT: msm_geni_serial accepts the msm-5.4 TIOCPMGET/PUT/ACT numbers (0x544D-F) |
+| main | Zorix A16 | to be confirmed | BT fix moved to main: `msm_geni_serial: accept the msm-5.4 TIOCPMGET/PUT/ACT ioctl numbers` |
