@@ -327,6 +327,16 @@ Notes:
   already switched and answers at 3.2 Mbaud before the host follows.
 * The UART debug mirror is limited to the BT UART (`890000` in the device
   name), never the console UART.
+* #243 (console gone): still `SetBaudRateStuck`. The log shows why: every
+  `set_mctrl`/`get_mctrl` from the HAL (`mctrl=0x2` = flow off before the
+  set-baud command, `0x6` after) prints `Device is suspended` and returns,
+  because `device_pending_suspend()` sees usage count 0. The HAL keeps the
+  port up with the TIOCPMGET clock vote, but uses the msm-5.4 numbers
+  `0x544D/0x544E/0x544F`; msm-5.10 only accepts `MSM_GENI_SERIAL_TIOCPM*`
+  (`0x54ED-0x54EF`). So the flow-off never reaches the RFR line, the
+  controller replies at 3.2 Mbaud while the host is still at 115200 (one
+  `fe` byte, `ReadNewHciEvent: Got an invalid proto byte: 254`) and init
+  stalls. The driver now accepts both sets of numbers (next diag).
 
 ### Missing text / blinking images: ION cache maintenance test
 
@@ -1239,3 +1249,4 @@ Not needed for the AnyKernel3 zip. For building inside a ROM tree
 | #243 | Zorix A16 | fixed: fast boot (system and recovery), fast screen wake, no app lag; camera photo/video OK | `# CONFIG_SERIAL_MSM_GENI_CONSOLE` / `# CONFIG_SERIAL_MSM_GENI_EARLY_CONSOLE is not set` (as msm-5.4 QGKI) |
 | main | Zorix A16 | to be confirmed | camera and console fixes moved to main: `haydn_GKI: build the CVP driver`, `msm_cvp: include linux/compat.h`, `msm_cvp: build on 5.10`, `msm: camera: icp: reject negative AXI path index`, `haydn: drop the GENI serial console and early console` (no diag UBSAN report mode, no breadcrumbs) |
 | #243 | Zorix A16 | not a bug | camera app: 60 fps works at 1080p and 4K; it is only greyed out with HDR video on (Xiaomi camera limits HDR video to 30 fps) |
+| next diag | Zorix A16 | to be tested | BT: msm_geni_serial accepts the msm-5.4 TIOCPMGET/PUT/ACT numbers (0x544D-F) |
