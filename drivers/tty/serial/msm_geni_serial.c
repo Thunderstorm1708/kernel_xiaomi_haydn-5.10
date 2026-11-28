@@ -187,6 +187,19 @@ static void __ftrace_dbg(struct device *dev, const char *fmt, ...)
  * UART (se18 @ 0x890000) also go to dmesg. Never for the console UART:
  * printing from inside its own (locked) paths can deadlock (#102 resets).
  */
+/*
+ * The msm-5.4 vendor Bluetooth HAL votes the UART clocks with the old
+ * asm-generic TIOCPMGET/TIOCPMPUT/TIOCPMACT numbers (0x544D-0x544F), which
+ * msm-5.4 still accepted next to the MSM_GENI_SERIAL_* ones. Without them
+ * the HAL's clock vote fails, the port stays at usage count 0 between
+ * transfers and set_mctrl() drops the HAL's "flow off" before the baud
+ * switch, so the controller's reply at the new baud is lost
+ * (SetBaudRateStuck).
+ */
+#define HAYDN_LEGACY_TIOCPMGET	0x544D
+#define HAYDN_LEGACY_TIOCPMPUT	0x544E
+#define HAYDN_LEGACY_TIOCPMACT	0x544F
+
 static bool haydn_uart_dbg;
 module_param(haydn_uart_dbg, bool, 0644);
 
@@ -797,19 +810,24 @@ static int msm_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd,
 	int ret = -ENOIOCTLCMD;
 	enum uart_error_code uart_error;
 
+	UART_LOG_DBG(port->ipc_log_misc, uport->dev, "%s: cmd 0x%x by %s\n",
+		     __func__, cmd, current->comm);
 	switch (cmd) {
+	case HAYDN_LEGACY_TIOCPMGET:
 	case MSM_GENI_SERIAL_TIOCPMGET: {
 		if (port->pm_auto_suspend_disable)
 			break;
 		ret = vote_clock_on(uport);
 		break;
 	}
+	case HAYDN_LEGACY_TIOCPMPUT:
 	case MSM_GENI_SERIAL_TIOCPMPUT: {
 		if (port->pm_auto_suspend_disable)
 			break;
 		ret = vote_clock_off(uport);
 		break;
 	}
+	case HAYDN_LEGACY_TIOCPMACT:
 	case MSM_GENI_SERIAL_TIOCPMACT: {
 		ret = !pm_runtime_status_suspended(uport->dev);
 		break;
